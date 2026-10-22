@@ -1,0 +1,9 @@
+{
+  "name": "tera-label-check",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "node server.mjs",
+    "e2e": "node e2e/run.cjs"
+  }
+}

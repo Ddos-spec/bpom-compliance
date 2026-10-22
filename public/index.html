@@ -3,9 +3,11 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#f1f5f2">
 <title>Tera · Pemeriksaan label</title>
-<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="preload" href="fonts/IBMPlexSans.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="fonts.css">
 <link rel="stylesheet" href="app.css">
 </head>
 <body>
@@ -21,11 +23,14 @@
       <span class="mark" aria-hidden="true">T</span>
       <span><b>Tera</b><small>Pemeriksaan label</small></span>
     </div>
-    <div class="scope" title="Cakupan kerja">Pengawasan pangan olahan<small>Disperindag</small></div>
-    <nav>
+    <div class="scope">Pengawasan pangan olahan<small>Disperindag</small></div>
+    <nav aria-label="Menu utama">
       <a class="nav-item" href="#/" data-nav="antrean"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 6h16M4 12h16M4 18h10"/></svg>Antrean <span class="nav-count" id="navCount"></span></a>
       <a class="nav-item" href="#/baru" data-nav="baru"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 5v14M5 12h14"/></svg>Periksa label baru</a>
       <a class="nav-item" href="#/aturan" data-nav="aturan"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M6 4h9l3 3v13H6zM9 11h6M9 15h6"/></svg>Dasar aturan</a>
+    </nav>
+    <nav class="bottom-nav" aria-label="Menu pengaturan">
+      <a class="nav-item" href="#/setelan" data-nav="setelan"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="3"/><path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M18.4 5.6l-2.1 2.1M7.7 16.3l-2.1 2.1"/></svg>Pengaturan</a>
     </nav>
     <div class="side-foot" id="aiState"></div>
   </aside>
@@ -33,6 +38,8 @@
 
   <main class="sheet" id="view" tabindex="-1"></main>
 </div>
+<div id="toast" class="toast" role="status" aria-live="polite"></div>
+<dialog id="imgDlg" aria-label="Foto label"><button id="dlgClose" class="btn sm" aria-label="Tutup">Tutup</button><img id="dlgImg" alt="Foto label diperbesar"></dialog>
 <script type="module" src="app.js"></script>
 </body>
 </html>

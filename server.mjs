@@ -58,6 +58,7 @@ http.createServer(async (req, res) => {
   try {
     const url = new URL(req.url, 'http://x');
     if (req.method === 'GET' && url.pathname === '/api/status') return send(res, 200, { ai: aiReady, model: aiReady ? MODEL : null });
+    if (req.method === 'GET' && url.pathname === '/api/nie') return send(res, 200, { available: false, error: 'Pengecekan BPOM belum tersambung' });
     if (req.method === 'POST' && url.pathname === '/api/analyze') {
       const b = JSON.parse(await readBody(req) || '{}');
       const form = { name: String(b.name || ''), nie: String(b.nie || '') };

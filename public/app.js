@@ -1,53 +1,88 @@
 import { runRules, ITEMS } from './rules.js';
-import { SAMPLE } from './data.js';
+import * as store from './store.js';
+import * as api from './api.js';
 
 const $ = (s, r = document) => r.querySelector(s);
+const $$ = (s, r = document) => [...r.querySelectorAll(s)];
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const view = $('#view');
+const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
 
-/* ---------- state ---------- */
-const LS = 'tera.v1';
-const saved = (() => { try { return JSON.parse(localStorage.getItem(LS)) || {}; } catch { return {}; } })();
-const state = { stages: saved.stages || {}, added: saved.added || [], filter: 'keputusan', ai: { ai: false } };
-const persist = () => localStorage.setItem(LS, JSON.stringify({ stages: state.stages, added: state.added }));
-const records = () => [...state.added, ...SAMPLE].map((r) => ({ ...r, stage: state.stages[r.id] || r.stage }));
-const byId = (id) => records().find((r) => r.id === id);
-const fmtDate = (iso) => new Date(iso + 'T00:00:00').toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' });
+const state = { filter: 'keputusan', q: '', sort: 'lama', ai: { ai: false } };
 const STAGE = { keputusan: 'Perlu keputusan', perbaikan: 'Menunggu perbaikan', selesai: 'Selesai' };
+const SEV = { perbaikan: 0, tinjau: 1, lengkap: 2 };
+const fmtDate = (iso) => new Date(iso.slice(0, 10) + 'T00:00:00').toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' });
+const fmtTime = (iso) => new Date(iso).toLocaleString('id-ID', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+const check = (r) => runRules(r.label, { name: r.name, nie: r.nie });
 
-/* ---------- pieces ---------- */
+let toastTimer;
+function toast(msg) {
+  const el = $('#toast'); el.textContent = msg; el.classList.add('show');
+  clearTimeout(toastTimer); toastTimer = setTimeout(() => el.classList.remove('show'), 3200);
+}
+
+/* ---------- potongan kecil ---------- */
+const ic = (d) => `<svg viewBox="0 0 12 12" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">${d}</svg>`;
+const MARK = { ok: ic('<path d="M2.5 6.5l2.3 2.3 4.7-5"/>'), miss: ic('<path d="M6 2.5v4.2M6 9.2v.1"/>'), review: ic('<path d="M4.6 4.5a1.5 1.5 0 112.4 1.2c-.7.5-1 .8-1 1.5M6 9.4v.1"/>'), na: ic('<path d="M3 6h6"/>') };
+const WORD = { ok: 'Ditemukan', miss: 'Tidak ditemukan', review: 'Perlu ditinjau', na: 'Tidak dinilai' };
+const PILL = { ok: 'ok', miss: 'bad', review: 'warn', na: 'neutral' };
+const vcls = (k) => (k === 'perbaikan' ? 'bad' : k === 'tinjau' ? 'warn' : 'ok');
+
 function statusPill(r, res) {
   if (r.stage === 'selesai') return '<span class="pill ok">Selesai</span>';
   if (r.stage === 'perbaikan') return '<span class="pill neutral">Menunggu perbaikan</span>';
-  const cls = res.verdict.key === 'perbaikan' ? 'bad' : res.verdict.key === 'tinjau' ? 'warn' : 'ok';
-  return `<span class="pill ${cls}">${esc(res.verdict.text)}</span>`;
+  if (!r.label.trim()) return '<span class="pill neutral">Teks belum dibaca</span>';
+  return `<span class="pill ${vcls(res.verdict.key)}">${esc(res.verdict.text)}</span>`;
 }
 
 function setNav(name, title) {
-  document.querySelectorAll('[data-nav]').forEach((a) => { if (a.dataset.nav === name) a.setAttribute('aria-current', 'page'); else a.removeAttribute('aria-current'); });
+  $$('[data-nav]').forEach((a) => (a.dataset.nav === name ? a.setAttribute('aria-current', 'page') : a.removeAttribute('aria-current')));
   $('#mbarTitle').textContent = title;
   document.title = `${title} · Tera`;
   document.body.classList.remove('menu-open');
   $('#menuBtn').setAttribute('aria-expanded', 'false');
 }
 
-/* ---------- queue ---------- */
+function skeleton() {
+  view.innerHTML = '<div class="skel" aria-busy="true" aria-label="Memuat"><i style="width:40%"></i><i style="width:65%"></i><i style="height:120px"></i><i style="height:120px"></i></div>';
+}
+
+/* ---------- antrean ---------- */
+function rowsFor() {
+  const rows = store.records().map((r) => ({ r, res: check(r) }));
+  const q = state.q.trim().toLowerCase();
+  let shown = rows.filter(({ r }) => state.filter === 'semua' || r.stage === state.filter);
+  if (q) shown = shown.filter(({ r }) => [r.name, r.owner, r.nie, r.id].join(' ').toLowerCase().includes(q));
+  const old = (a, b) => a.r.checked.localeCompare(b.r.checked);
+  shown.sort(state.sort === 'baru' ? (a, b) => -old(a, b)
+    : state.sort === 'masalah' ? (a, b) => (SEV[a.res.verdict.key] - SEV[b.res.verdict.key]) || old(a, b) : old);
+  return { rows, shown };
+}
+
+function listHtml(shown, total) {
+  if (!total) return `<div class="empty"><p><b>Belum ada berkas.</b></p><p>Mulai dengan memeriksa label pertama.</p><a class="btn primary" href="#/baru">Periksa label baru</a></div>`;
+  if (!shown.length) return `<div class="empty"><p><b>Tidak ada hasil.</b></p><p>${state.q ? `Tidak ada berkas yang cocok dengan “${esc(state.q)}” di tahap ini.` : 'Tidak ada berkas di tahap ini.'}</p>${state.filter !== 'semua' ? '<button class="btn" data-f="semua">Lihat semua berkas</button>' : ''}</div>`;
+  return `<div role="list">${shown.map(({ r, res }) => `
+    <a class="q-row" role="listitem" href="#/p/${esc(r.id)}">
+      <div class="c-name"><span class="p-name">${esc(r.name)}</span><small class="mono">${esc(r.id)}</small></div>
+      <div class="c-owner">${esc(r.owner)}<small class="mono">${esc(r.nie || '—')}</small></div>
+      <div class="c-find q-find">${r.label.trim() ? esc(res.verdict.detail) : 'Teks label belum diisi'}</div>
+      <div class="c-stat">${statusPill(r, res)}</div>
+      <div class="q-date num">${fmtDate(r.checked)}</div>
+    </a>`).join('')}</div>`;
+}
+
 function renderQueue() {
-  const all = records();
-  const rows = all.map((r) => ({ r, res: runRules(r.label, { name: r.name, nie: r.nie }) }));
+  const { rows, shown } = rowsFor();
   const cnt = { keputusan: 0, perbaikan: 0, selesai: 0 };
   rows.forEach(({ r }) => cnt[r.stage]++);
-  const pending = rows.filter(({ r }) => r.stage === 'keputusan');
+  const pending = rows.filter(({ r }) => r.stage === 'keputusan' && r.label.trim());
   const noHalal = pending.filter(({ res }) => res.items.find((i) => i.id === 'halal').status === 'miss').length;
   $('#navCount').textContent = cnt.keputusan || '';
-
-  const sub = pending.length
-    ? `<b>${pending.length} berkas menunggu keputusan</b>${noHalal ? `, ${noHalal} di antaranya tanpa keterangan halal` : ''}. Buka yang paling lama dulu.`
-    : 'Tidak ada berkas yang menunggu keputusan.';
-
-  const f = state.filter;
-  const shown = rows.filter(({ r }) => f === 'semua' || r.stage === f).sort((a, b) => a.r.checked.localeCompare(b.r.checked));
-  const card = (key, label, n) => `<button class="count" data-f="${key}" aria-pressed="${f === key}"><span>${label}</span><b>${n}</b></button>`;
+  const sub = cnt.keputusan
+    ? `<b>${cnt.keputusan} berkas menunggu keputusan</b>${noHalal ? `, ${noHalal} di antaranya tanpa keterangan halal` : ''}. Buka yang paling lama dulu.`
+    : rows.length ? 'Tidak ada berkas yang menunggu keputusan.' : 'Belum ada berkas.';
+  const card = (key, label, n) => `<button class="count" data-f="${key}" aria-pressed="${state.filter === key}"><span>${label}</span><b>${n}</b></button>`;
 
   view.innerHTML = `
     <div class="title-row">
@@ -57,19 +92,22 @@ function renderQueue() {
     <div class="counts" role="group" aria-label="Filter berdasarkan tahap">
       ${card('keputusan', STAGE.keputusan, cnt.keputusan)}${card('perbaikan', STAGE.perbaikan, cnt.perbaikan)}${card('selesai', STAGE.selesai, cnt.selesai)}${card('semua', 'Semua berkas', rows.length)}
     </div>
+    <div class="tools">
+      <label class="search"><span class="sr">Cari berkas</span><input class="input" id="q" type="search" placeholder="Cari nama, usaha, atau nomor  ( / )" value="${esc(state.q)}" autocomplete="off"></label>
+      <label class="sortl"><span class="sr">Urutkan</span><select class="input" id="sort">
+        <option value="lama"${state.sort === 'lama' ? ' selected' : ''}>Terlama dulu</option>
+        <option value="baru"${state.sort === 'baru' ? ' selected' : ''}>Terbaru dulu</option>
+        <option value="masalah"${state.sort === 'masalah' ? ' selected' : ''}>Paling bermasalah dulu</option></select></label>
+    </div>
     <div class="queue-head" aria-hidden="true"><span>Produk</span><span>Pelaku usaha</span><span>Temuan</span><span>Status</span><span style="text-align:right">Diperiksa</span></div>
-    <div role="list">
-    ${shown.length ? shown.map(({ r, res }) => `
-      <a class="q-row" role="listitem" href="#/p/${esc(r.id)}">
-        <div class="c-name"><span class="p-name">${esc(r.name)}</span><small class="mono">${esc(r.id)}</small></div>
-        <div class="c-owner">${esc(r.owner)}<small class="mono">${esc(r.nie || '—')}</small></div>
-        <div class="c-find q-find">${esc(res.verdict.detail)}</div>
-        <div class="c-stat">${statusPill(r, res)}</div>
-        <div class="q-date num">${fmtDate(r.checked)}</div>
-      </a>`).join('') : '<p class="empty">Tidak ada berkas di tahap ini.</p>'}
-    </div>`;
-  view.querySelectorAll('.count').forEach((b) => b.addEventListener('click', () => { state.filter = b.dataset.f; renderQueue(); }));
+    <div id="list" aria-live="polite">${listHtml(shown, rows.length)}</div>`;
+  bindQueue();
   setNav('antrean', 'Antrean pemeriksaan');
+}
+function bindQueue() {
+  $$('[data-f]', view).forEach((b) => b.addEventListener('click', () => { state.filter = b.dataset.f; renderQueue(); }));
+  $('#q')?.addEventListener('input', (e) => { state.q = e.target.value; const { rows, shown } = rowsFor(); $('#list').innerHTML = listHtml(shown, rows.length); $$('[data-f]', $('#list')).forEach((b) => b.addEventListener('click', () => { state.filter = b.dataset.f; renderQueue(); })); });
+  $('#sort')?.addEventListener('change', (e) => { state.sort = e.target.value; renderQueue(); });
 }
 
 /* ---------- detail ---------- */
@@ -87,111 +125,210 @@ function annotate(text, res) {
   return out + esc(text.slice(pos));
 }
 
-const ic = (d) => `<svg viewBox="0 0 12 12" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">${d}</svg>`;
-const MARK = { ok: ic('<path d="M2.5 6.5l2.3 2.3 4.7-5"/>'), miss: ic('<path d="M6 2.5v4.2M6 9.2v.1"/>'), review: ic('<path d="M4.6 4.5a1.5 1.5 0 112.4 1.2c-.7.5-1 .8-1 1.5M6 9.4v.1"/>'), na: ic('<path d="M3 6h6"/>') };
-const WORD = { ok: 'Ditemukan', miss: 'Tidak ditemukan', review: 'Perlu ditinjau', na: 'Tidak dinilai' };
+function nieHtml(r, res) {
+  const it = res.items.find((i) => i.id === 'nie');
+  const number = r.nie || (it.status === 'ok' ? it.evidence : '');
+  const f = api.nieFormat(number);
+  const fp = { sesuai: 'ok', salah: 'bad', kosong: 'neutral' }[f.state];
+  return `<section class="panel" id="niePanel"><h2>Nomor izin edar</h2>
+    <p class="cap">Dua pemeriksaan terpisah: format nomor, dan kecocokan dengan data BPOM.</p>
+    <div class="kv"><span>Nomor</span><span class="mono">${esc(number || '—')}</span></div>
+    <div class="kv"><span>Format</span><span><span class="pill ${fp}">${f.state === 'sesuai' ? 'Sesuai pola' : f.state === 'salah' ? 'Tidak sesuai' : 'Kosong'}</span> <span class="q-find">${esc(f.text)}</span></span></div>
+    <div class="kv"><span>Data BPOM</span><span id="nieOut"><button class="btn" id="nieBtn"${number ? '' : ' disabled'}>Cek ke BPOM</button></span></div></section>`;
+}
 
 function renderDetail(id) {
-  const r = byId(id);
-  if (!r) { view.innerHTML = '<p class="empty">Berkas tidak ditemukan. <a href="#/"><u>Kembali ke antrean</u></a></p>'; setNav('antrean', 'Berkas'); return; }
-  const res = runRules(r.label, { name: r.name, nie: r.nie });
-  const vcls = res.verdict.key === 'perbaikan' ? 'bad' : res.verdict.key === 'tinjau' ? 'warn' : 'ok';
+  const r = store.byId(id);
+  if (!r) { view.innerHTML = '<div class="empty"><p><b>Berkas tidak ditemukan.</b></p><a class="btn" href="#/">Kembali ke antrean</a></div>'; setNav('antrean', 'Berkas'); return; }
+  const res = check(r);
+  const empty = !r.label.trim();
+  const needFix = !empty && res.verdict.key !== 'lengkap';
 
   const actions = r.stage === 'keputusan'
-    ? `<button class="btn${res.verdict.key === 'lengkap' ? '' : ' primary'}" data-act="perbaikan">Minta perbaikan</button><button class="btn${res.verdict.key === 'lengkap' ? ' primary' : ''}" data-act="selesai">Setujui</button>`
+    ? `<button class="btn${needFix ? ' primary' : ''}" data-act="perbaikan">Minta perbaikan</button><button class="btn${needFix ? '' : ' primary'}" data-act="selesai">Setujui</button>`
     : r.stage === 'perbaikan' ? '<button class="btn primary" data-act="selesai">Tandai selesai</button>'
     : '<button class="btn" data-act="keputusan">Buka kembali</button>';
 
   const aiHtml = r.ai ? `
     <div class="ai-block"><h3>Tinjauan AI</h3>
-      <p class="sub" style="margin-top:0">${esc(r.ai.ringkasan || '')}</p>
+      <p class="q-find" style="margin-bottom:6px">${esc(r.ai.ringkasan || '')}</p>
       ${(r.ai.temuan || []).map((t) => `<div class="ai-item"><span class="pill ${t.tingkat === 'masalah' ? 'bad' : 'warn'}">${t.tingkat === 'masalah' ? 'Masalah' : 'Tinjau'}</span> <b>${esc(t.judul)}</b>${t.kutipan ? `<q>${esc(t.kutipan)}</q>` : ''}<span class="q-find">${esc(t.penjelasan)}</span></div>`).join('') || '<p class="q-find">AI tidak menambah temuan.</p>'}
     </div>` : '';
 
+  const msg = needFix ? api.remedyMessage(r, res) : '';
+  const log = [...r.log].reverse();
+
   view.innerHTML = `
+    <div class="print-head"><b>Laporan pemeriksaan label</b><span>${esc(r.id)} · dicetak ${fmtTime(new Date().toISOString())}</span></div>
     <div class="crumb"><a href="#/">Antrean</a><span aria-hidden="true">/</span><span class="mono">${esc(r.id)}</span></div>
     <div class="title-row">
       <div><h1>${esc(r.name)}</h1><p class="sub">${esc(r.owner)} · diperiksa ${fmtDate(r.checked)} · ${esc(STAGE[r.stage])}</p></div>
-      <div class="actions">${actions}</div>
+      <div class="actions"><button class="btn" id="printBtn">Cetak laporan</button>${actions}</div>
     </div>
-    <div class="verdict"><span class="v ${vcls}">${esc(res.verdict.text)}</span><span class="d">${esc(res.verdict.detail)}</span></div>
+    ${empty
+      ? `<div class="verdict"><span class="v">Teks label belum dibaca</span><span class="d">Ketik atau tempel teks dari foto agar pemeriksaan bisa jalan.</span></div>`
+      : `<div class="verdict"><span class="v ${vcls(res.verdict.key)}">${esc(res.verdict.text)}</span><span class="d">${esc(res.verdict.detail)}</span></div>`}
     <div class="split">
-      <section class="panel"><h2>Teks label</h2><p class="cap">Garis bawah menandai bagian yang dipakai sebagai bukti. Klik untuk melompat ke temuannya.</p>
-        <div class="label-text" id="labelText">${annotate(r.label, res)}</div></section>
+      <div class="col">
+        ${r.image ? `<section class="panel"><h2>Foto label</h2><button class="photo" id="photoBtn" aria-label="Perbesar foto label"><img alt="Foto label ${esc(r.name)}" src="${r.image}"></button></section>` : ''}
+        <section class="panel"><div class="ph"><h2>Teks label</h2><button class="btn sm" id="editBtn">${empty ? 'Isi teks' : 'Ubah teks'}</button></div>
+          <p class="cap">Garis bawah menandai bukti yang dipakai. Klik untuk melompat ke temuannya.</p>
+          <div id="labelBox">${empty ? '<p class="q-find">Belum ada teks.</p>' : `<div class="label-text" id="labelText">${annotate(r.label, res)}</div>`}</div></section>
+        ${nieHtml(r, res)}
+        ${needFix ? `<section class="panel"><h2>Pesan untuk pelaku usaha</h2><p class="cap">Siap dikirim lewat WhatsApp atau disalin.</p><pre class="msg" id="msgText">${esc(msg)}</pre>
+          <div class="actions" style="margin-top:12px"><button class="btn" id="copyBtn">Salin pesan</button><a class="btn" target="_blank" rel="noopener" href="https://wa.me/?text=${encodeURIComponent(msg)}">Kirim lewat WhatsApp</a></div></section>` : ''}
+        <section class="panel"><h2>Catatan petugas</h2><p class="cap">Tersimpan otomatis saat Anda selesai mengetik.</p>
+          <textarea class="input note" id="note" rows="3" placeholder="Tulis catatan untuk berkas ini">${esc(r.note)}</textarea></section>
+        <section class="panel"><h2>Riwayat</h2><ol class="log">${log.map((l) => `<li><time class="num">${fmtTime(l.t)}</time><span>${esc(l.text)}</span></li>`).join('')}</ol></section>
+      </div>
       <section class="panel"><h2>Keterangan wajib</h2><p class="cap">9 butir, ${esc(res.items[0].pasal)} Peraturan BPOM 31/2018 (diubah 20/2021)</p>
-        ${res.items.map((i) => `
+        ${empty ? '<p class="q-find">Belum diperiksa karena teks label kosong.</p>' : res.items.map((i) => `
           <div class="finding">
             <span class="st ${i.status}" aria-hidden="true">${MARK[i.status]}</span>
-            <div><div class="t">${esc(i.label)} <span class="sr" style="position:absolute;left:-9999px">${WORD[i.status]}</span></div>
+            <div><div class="t">${esc(i.label)}</div>
               ${i.note ? `<div class="n">${esc(i.note)}</div>` : ''}
-              ${i.evidence && i.status !== 'miss' ? `<button class="ev" data-ref="${i.id}">${esc(i.evidence)}</button>` : ''}
+              ${i.evidence && i.status !== 'miss' ? (i.index !== null ? `<button class="ev" data-ref="${i.id}">${esc(i.evidence)}</button>` : `<div class="ev plain">${esc(i.evidence)}</div>`) : ''}
             </div>
-            <span class="pill ${i.status === 'ok' ? 'ok' : i.status === 'miss' ? 'bad' : i.status === 'review' ? 'warn' : 'neutral'}">${WORD[i.status]}</span>
+            <span class="pill ${PILL[i.status]}">${WORD[i.status]}</span>
           </div>`).join('')}
         ${res.claims.length ? `<div class="ai-block"><h3>Klaim pada label</h3>${res.claims.map((c, k) => `<div class="ai-item"><span class="pill warn">Tinjau</span> <button class="ev" data-ref="klaim${k}">${esc(c.text)}</button><div class="q-find">${esc(c.note)}</div></div>`).join('')}</div>` : ''}
         ${aiHtml}
-        <p class="note-box">Ini pemeriksaan awal. Mesin aturan hanya mencari keberadaan keterangan di teks, bukan menilai kebenarannya, dan nomor izin hanya diperiksa formatnya, belum dicocokkan ke basis data BPOM. Keputusan akhir ada pada petugas.</p>
+        <p class="note-box">Ini pemeriksaan awal. Mesin aturan hanya mencari keberadaan keterangan di teks, bukan menilai kebenarannya, dan nomor izin hanya diperiksa formatnya kecuali sudah dicek ke BPOM. Keputusan akhir ada pada petugas.</p>
       </section>
     </div>`;
-
-  view.querySelectorAll('[data-act]').forEach((b) => b.addEventListener('click', () => { state.stages[r.id] = b.dataset.act; persist(); renderDetail(r.id); }));
-  view.querySelectorAll('[data-ref]').forEach((el) => el.addEventListener('click', () => {
-    const ref = el.dataset.ref;
-    document.querySelectorAll('#labelText mark').forEach((m) => m.classList.toggle('on', m.dataset.ref === ref));
-    const m = $(`#labelText mark[data-ref="${ref}"]`); if (m) m.scrollIntoView({ block: 'center', behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
-  }));
+  bindDetail(r, res);
   setNav('antrean', r.name);
 }
 
-/* ---------- new check ---------- */
+function bindDetail(r, res) {
+  $$('[data-act]', view).forEach((b) => b.addEventListener('click', () => {
+    const act = b.dataset.act;
+    if (act === 'selesai' && res.verdict.key === 'perbaikan' && r.label.trim() && !confirm(`${res.miss} keterangan wajib masih tidak ditemukan. Tetap setujui?`)) return;
+    const text = { perbaikan: 'Diminta perbaikan kepada pelaku usaha', selesai: 'Disetujui petugas', keputusan: 'Berkas dibuka kembali' }[act];
+    if (!store.setStage(r.id, act, text)) toast('Penyimpanan penuh. Ekspor data lalu hapus berkas lama.');
+    renderDetail(r.id); toast(text + '.');
+  }));
+  $('#printBtn').addEventListener('click', () => print());
+  $('#note').addEventListener('change', (e) => { store.setNote(r.id, e.target.value); toast('Catatan disimpan.'); });
+  $('#photoBtn')?.addEventListener('click', () => { $('#dlgImg').src = r.image; $('#imgDlg').showModal(); });
+  $('#copyBtn')?.addEventListener('click', async () => {
+    try { await navigator.clipboard.writeText($('#msgText').textContent); toast('Pesan disalin.'); }
+    catch { const rg = document.createRange(); rg.selectNodeContents($('#msgText')); getSelection().removeAllRanges(); getSelection().addRange(rg); toast('Pilih lalu salin manual (Ctrl+C).'); }
+  });
+  $('#editBtn').addEventListener('click', () => {
+    $('#labelBox').innerHTML = `<textarea class="input" id="labelEdit" aria-label="Teks label">${esc(r.label)}</textarea>
+      <div class="actions" style="margin-top:8px"><button class="btn primary" id="saveLabel">Simpan dan periksa ulang</button><button class="btn" id="cancelLabel">Batal</button></div>`;
+    $('#editBtn').hidden = true; $('#labelEdit').focus();
+    $('#cancelLabel').addEventListener('click', () => renderDetail(r.id));
+    $('#saveLabel').addEventListener('click', () => { store.setLabel(r.id, $('#labelEdit').value); renderDetail(r.id); toast('Teks disimpan, pemeriksaan diulang.'); });
+  });
+  $('#nieBtn')?.addEventListener('click', async (e) => {
+    const btn = e.currentTarget; btn.disabled = true; btn.textContent = 'Mengecek…';
+    const number = r.nie || res.items.find((i) => i.id === 'nie').evidence;
+    const out = await api.lookupNie(number);
+    $('#nieOut').innerHTML = !out.ok
+      ? '<span class="q-find">Layanan cek BPOM belum tersambung. Cek manual di <a class="lnk" target="_blank" rel="noopener" href="https://cekbpom.pom.go.id">cekbpom.pom.go.id</a>.</span>'
+      : out.found ? `<span class="pill ok">Ditemukan</span> <span class="q-find">${esc(out.product || '')} · ${esc(out.owner || '')}${out.valid_until ? ` · berlaku s.d. ${esc(out.valid_until)}` : ''}</span>`
+      : '<span class="pill bad">Tidak ditemukan</span> <span class="q-find">Nomor tidak ada di data BPOM.</span>';
+  });
+  $$('[data-ref]', view).forEach((el) => el.addEventListener('click', () => {
+    const ref = el.dataset.ref;
+    $$('#labelText mark').forEach((m) => m.classList.toggle('on', m.dataset.ref === ref));
+    $(`#labelText mark[data-ref="${ref}"]`)?.scrollIntoView({ block: 'center', behavior: reduced ? 'auto' : 'smooth' });
+  }));
+}
+
+/* ---------- periksa baru ---------- */
+const DEMO = `MIE KERING TELUR PUTIH\nKomposisi: tepung terigu, telur, garam, air.\nBerat bersih: 200 g\nDiproduksi oleh: UD Mie Sehat, Jl. Cempaka No. 8, Kec. Pamulang, Kota Tangerang Selatan\nKode produksi: MK-2210\nBaik digunakan sebelum: 22 Oktober 2027`;
+
 function renderNew() {
   view.innerHTML = `
-    <div class="title-row"><div><h1>Periksa label baru</h1><p class="sub">Tempel teks label. Mesin aturan memeriksa 9 keterangan wajib${state.ai.ai ? '; AI ikut meninjau klaim dan hal yang tidak tertangkap aturan' : '. AI belum diaktifkan, jadi hanya mesin aturan yang jalan'}.</p></div></div>
+    <div class="title-row"><div><h1>Periksa label baru</h1><p class="sub">Tempel teks label dan, bila ada, lampirkan fotonya. Mesin aturan memeriksa 9 keterangan wajib${state.ai.ai ? '; AI ikut meninjau klaim dan hal yang lolos dari aturan' : '. AI belum aktif, jadi hanya mesin aturan yang jalan'}.</p></div></div>
     <form id="f" class="form-grid" novalidate>
       <div class="field"><label for="name">Nama produk</label><input class="input" id="name" required autocomplete="off" placeholder="mis. Keripik Singkong Balado"></div>
-      <div class="field"><label for="owner">Pelaku usaha</label><input class="input" id="owner" autocomplete="off"></div>
-      <div class="field"><label for="nie">Nomor izin edar</label><input class="input mono" id="nie" autocomplete="off" placeholder="MD 000000000000"><span class="hint">Hanya formatnya yang diperiksa. Belum terhubung ke basis data BPOM.</span></div>
-      <div class="field"><span class="lab">Foto label (opsional)</span>
-        <div class="drop"><input type="file" id="img" accept="image/*" aria-label="Foto label"><span class="hint">${state.ai.ai ? 'AI membaca teks dari foto.' : 'Perlu AI aktif untuk membaca foto.'}</span><div id="prev"></div></div></div>
-      <div class="field span2"><label for="text">Teks label</label><textarea class="input" id="text" placeholder="Salin semua tulisan di kemasan, termasuk komposisi, berat bersih, produsen, kode produksi, dan tanggal kedaluwarsa."></textarea></div>
+      <div class="field"><label for="owner">Pelaku usaha</label><input class="input" id="owner" autocomplete="off" placeholder="Nama usaha atau pemilik"></div>
+      <div class="field"><label for="cat">Jenis produk</label><select class="input" id="cat"><option>Pangan olahan</option><option disabled>Kosmetik (segera)</option><option disabled>Obat tradisional (segera)</option></select></div>
+      <div class="field"><label for="nie">Nomor izin edar</label><input class="input mono" id="nie" autocomplete="off" placeholder="MD 000000000000"><span class="hint" id="nieHint">Format diperiksa saat Anda mengetik.</span></div>
+      <div class="field span2"><span class="lab">Foto label (opsional)</span>
+        <div class="drop" id="drop"><label class="drop-in"><input type="file" id="img" accept="image/*" capture="environment"><span><b>Pilih atau ambil foto</b><small>JPG atau PNG. Diperkecil otomatis di perangkat.</small></span></label><div id="prev"></div></div>
+        <span class="hint">${state.ai.ai ? 'AI membaca teks dari foto. Hasilnya tetap bisa Anda koreksi.' : 'Pembacaan teks dari foto butuh AI. Sementara itu foto disimpan sebagai lampiran, teksnya diketik manual.'}</span></div>
+      <div class="field span2"><div class="ph" style="margin:0"><label for="text">Teks label</label><button class="btn sm" type="button" id="demo">Pakai contoh label</button></div>
+        <textarea class="input" id="text" placeholder="Salin semua tulisan di kemasan: komposisi, berat bersih, produsen, kode produksi, tanggal kedaluwarsa, halal, nomor izin edar."></textarea></div>
       <div class="span2"><button class="btn primary" id="go" type="submit">Periksa label</button><p class="err" id="err" role="alert"></p></div>
     </form>`;
-  let imageDataUrl = '';
-  $('#img').addEventListener('change', (e) => {
-    const file = e.target.files[0]; if (!file) { imageDataUrl = ''; $('#prev').innerHTML = ''; return; }
-    if (file.size > 4_000_000) { $('#err').textContent = 'Foto lebih dari 4 MB. Kecilkan dulu.'; e.target.value = ''; return; }
-    const rd = new FileReader(); rd.onload = () => { imageDataUrl = rd.result; $('#prev').innerHTML = `<img alt="Pratinjau foto label" src="${imageDataUrl}">`; }; rd.readAsDataURL(file);
-  });
+  let image = '';
+  const prev = () => { $('#prev').innerHTML = image ? `<div class="thumb"><img alt="Pratinjau foto label" src="${image}"><button type="button" class="btn sm" id="rmImg">Hapus foto</button></div>` : ''; $('#rmImg')?.addEventListener('click', () => { image = ''; $('#img').value = ''; prev(); }); };
+  const take = async (file) => {
+    if (!file) return;
+    try { image = await api.shrinkImage(file); prev(); $('#err').textContent = ''; } catch (e) { $('#err').textContent = e.message; }
+  };
+  $('#img').addEventListener('change', (e) => take(e.target.files[0]));
+  const drop = $('#drop');
+  ['dragenter', 'dragover'].forEach((ev) => drop.addEventListener(ev, (e) => { e.preventDefault(); drop.classList.add('over'); }));
+  ['dragleave', 'drop'].forEach((ev) => drop.addEventListener(ev, (e) => { e.preventDefault(); drop.classList.remove('over'); }));
+  drop.addEventListener('drop', (e) => take(e.dataTransfer.files[0]));
+  $('#demo').addEventListener('click', () => { $('#text').value = DEMO; if (!$('#name').value) $('#name').value = 'Mie Kering Telur Putih'; if (!$('#owner').value) $('#owner').value = 'UD Mie Sehat'; });
+  $('#nie').addEventListener('input', (e) => { const f = api.nieFormat(e.target.value); $('#nieHint').textContent = f.state === 'kosong' ? 'Format diperiksa saat Anda mengetik.' : f.text; $('#nieHint').style.color = f.state === 'salah' ? 'var(--negative)' : ''; });
   $('#f').addEventListener('submit', async (e) => {
     e.preventDefault();
-    const name = $('#name').value.trim(), labelText = $('#text').value.trim();
-    const err = $('#err'); err.textContent = '';
+    const name = $('#name').value.trim(), labelText = $('#text').value.trim(), err = $('#err');
+    err.textContent = '';
     if (!name) { err.textContent = 'Nama produk wajib diisi.'; $('#name').focus(); return; }
-    if (!labelText && !(imageDataUrl && state.ai.ai)) { err.textContent = imageDataUrl ? 'Foto hanya bisa dibaca bila AI aktif. Tempel teks label.' : 'Tempel teks label dulu.'; $('#text').focus(); return; }
-    const btn = $('#go'); btn.disabled = true; btn.textContent = 'Memeriksa…';
-    try {
-      const res = await fetch('/api/analyze', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name, nie: $('#nie').value, labelText, imageDataUrl }) });
-      if (!res.ok) throw new Error('Server menolak permintaan.');
-      const out = await res.json();
-      const n = 420 + records().length + 1;
-      const rec = { id: `P-0${n}`, name, owner: $('#owner').value.trim() || 'Belum diisi', checked: new Date().toISOString().slice(0, 10), stage: 'keputusan', nie: $('#nie').value.trim(), label: labelText, ai: out.ai || null };
-      state.added.unshift(rec); persist();
-      location.hash = `#/p/${rec.id}`;
-    } catch (ex) {
-      err.textContent = `Gagal memeriksa: ${ex.message}. Pastikan server jalan (node server.mjs).`;
-      btn.disabled = false; btn.textContent = 'Periksa label';
-    }
+    if (!labelText && !image) { err.textContent = 'Tempel teks label atau lampirkan foto.'; $('#text').focus(); return; }
+    const btn = $('#go'); btn.disabled = true; btn.textContent = state.ai.ai ? 'Memeriksa dengan aturan dan AI…' : 'Memeriksa…';
+    const out = await api.analyze({ name, nie: $('#nie').value, labelText, imageDataUrl: state.ai.ai ? image : '' });
+    const rec = { id: store.nextId(), name, owner: $('#owner').value.trim() || 'Belum diisi', checked: new Date().toISOString().slice(0, 10), stage: 'keputusan', nie: $('#nie').value.trim(), label: labelText, ai: out.ai || null };
+    if (!store.addRecord(rec, image)) toast('Penyimpanan penuh, foto mungkin tidak tersimpan.');
+    location.hash = `#/p/${rec.id}`;
+    if (out.aiError) toast('AI gagal, hasil hanya dari mesin aturan.');
   });
   setNav('baru', 'Periksa label baru');
 }
 
-/* ---------- rules ---------- */
+/* ---------- dasar aturan ---------- */
+const HINT = {
+  nama: ['Nama produk diisi pada form pemeriksaan.', 'Kosong atau hanya satu dua huruf.'],
+  bahan: ['Ada kata “komposisi”, “daftar bahan”, atau “ingredients”.', 'Label hanya memuat nama dan berat.'],
+  berat: ['Ada angka dengan satuan (g, kg, ml, l) setelah “berat bersih” atau “isi bersih”.', '“Isi bersih” tanpa angka atau satuan.'],
+  produsen: ['Ada “diproduksi oleh” dan penanda alamat (jalan, kecamatan, kota).', 'Hanya nama usaha, tanpa alamat.'],
+  halal: ['Ada kata halal, BPJPH, atau keterangan non-halal.', 'Tidak ada keterangan apa pun.'],
+  produksi: ['Ada kode produksi, tanggal produksi, lot, atau batch.', 'Hanya tanggal kedaluwarsa yang tercantum.'],
+  kedaluwarsa: ['Ada kedaluwarsa, “baik digunakan sebelum”, “best before”, atau exp.', 'Tidak ada batas waktu pakai.'],
+  nie: ['Ada MD atau ML diikuti 9 sampai 15 angka. Hanya format, bukan keaslian.', 'Hanya P-IRT pada produk yang butuh MD.'],
+  asal: ['Tidak dinilai otomatis. Ditandai bila ada kata babi, alkohol, atau etanol.', 'Bahan asal babi tanpa keterangan.'],
+};
 function renderRules() {
   view.innerHTML = `
-    <div class="title-row"><div><h1>Dasar aturan</h1><p class="sub">Sembilan keterangan wajib pada label pangan olahan yang diperiksa mesin ini, sumber: Peraturan BPOM 31/2018 Pasal 5 ayat (1), diubah dengan Peraturan BPOM 20/2021.</p></div></div>
-    <div>${ITEMS.map((i, k) => `<div class="rule-row"><span class="idx">${k + 1}</span><div><div class="t" style="font-weight:500">${esc(i.label)}</div></div><span class="finding ref" style="display:block;padding:0;border:0;font-size:12px;color:var(--faint)">${esc(i.pasal)}</span></div>`).join('')}</div>
+    <div class="title-row"><div><h1>Dasar aturan</h1><p class="sub">Sembilan keterangan wajib pada label pangan olahan yang diperiksa mesin ini. Sumber: Peraturan BPOM 31/2018 Pasal 5 ayat (1), diubah dengan Peraturan BPOM 20/2021.</p></div></div>
+    <div class="seg" role="tablist" aria-label="Jenis produk"><button role="tab" aria-selected="true">Pangan olahan</button><button role="tab" disabled>Kosmetik <i class="pill neutral">Segera</i></button><button role="tab" disabled>Obat tradisional <i class="pill neutral">Segera</i></button></div>
+    <div>${ITEMS.map((i, k) => `<div class="rule-row"><span class="idx">${k + 1}</span><div><div class="t">${esc(i.label)}</div>
+      <div class="n">Diperiksa: ${esc(HINT[i.id][0])}</div><div class="n">Tidak lolos bila: ${esc(HINT[i.id][1])}</div></div><span class="ref">${esc(i.pasal)}</span></div>`).join('')}</div>
     <p class="note-box">Nomor pasal dan daftar butir diambil dari hasil pencarian web, belum dicocokkan dengan naskah resmi. Verifikasi di pom.go.id sebelum dipakai sebagai dasar tindakan resmi. Klaim pada label (gizi, kesehatan) belum punya aturan deterministik dan ditandai untuk ditinjau manusia.</p>`;
   setNav('aturan', 'Dasar aturan');
+}
+
+/* ---------- pengaturan ---------- */
+function renderSettings() {
+  const n = store.records().length;
+  view.innerHTML = `
+    <div class="title-row"><div><h1>Pengaturan</h1><p class="sub">Status layanan dan pengelolaan data. Data disimpan di peramban ini sampai backend tersambung.</p></div></div>
+    <section class="panel"><h2>Layanan</h2>
+      <div class="kv"><span>Mesin aturan</span><span><span class="pill ok">Aktif</span> <span class="q-find">berjalan di peramban dan server</span></span></div>
+      <div class="kv"><span>AI (OpenRouter)</span><span>${state.ai.ai ? `<span class="pill ok">Aktif</span> <span class="q-find mono">${esc(state.ai.model)}</span>` : `<span class="pill neutral">Belum aktif</span> <span class="q-find">${state.ai.offline ? 'server tidak terjangkau' : 'isi OPENROUTER_API_KEY dan OPENROUTER_MODEL di .env'}</span>`}</span></div>
+      <div class="kv"><span>Cek nomor izin edar</span><span><span class="pill neutral">Belum tersambung</span> <span class="q-find">hanya format yang diperiksa</span></span></div></section>
+    <section class="panel" style="margin-top:16px"><h2>Data</h2>
+      <div class="kv"><span>Isi</span><span>${n} berkas · ${store.usage()} KB di peramban</span></div>
+      <div class="actions" style="margin-top:12px"><button class="btn" id="exp">Ekspor JSON</button><label class="btn" for="imp">Impor JSON</label><input type="file" id="imp" accept="application/json" hidden><button class="btn danger" id="rst">Hapus data buatan sendiri</button></div>
+      <p class="cap" style="margin:12px 0 0">Hapus hanya menghilangkan berkas yang Anda buat, catatan, dan perubahan status. Data contoh kembali ke kondisi awal.</p></section>`;
+  $('#exp').addEventListener('click', () => {
+    const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([store.exportJson()], { type: 'application/json' }));
+    a.download = `tera-${new Date().toISOString().slice(0, 10)}.json`; a.click(); URL.revokeObjectURL(a.href); toast('Data diekspor.');
+  });
+  $('#imp').addEventListener('change', async (e) => {
+    try { store.importJson(await e.target.files[0].text()); toast('Data diimpor.'); renderSettings(); } catch (ex) { toast(ex.message); }
+  });
+  $('#rst').addEventListener('click', () => { if (confirm('Hapus semua berkas buatan sendiri, catatan, dan perubahan status?')) { store.resetAll(); toast('Data dihapus.'); renderSettings(); } });
+  setNav('setelan', 'Pengaturan');
 }
 
 /* ---------- router ---------- */
@@ -200,16 +337,24 @@ function route() {
   if (h.startsWith('/p/')) renderDetail(decodeURIComponent(h.slice(3)));
   else if (h === '/baru') renderNew();
   else if (h === '/aturan') renderRules();
+  else if (h === '/setelan') renderSettings();
   else renderQueue();
+  $('#navCount').textContent = store.records().filter((r) => r.stage === 'keputusan').length || '';
   window.scrollTo(0, 0);
 }
 addEventListener('hashchange', route);
+const closeMenu = () => { document.body.classList.remove('menu-open'); $('#menuBtn').setAttribute('aria-expanded', 'false'); };
 $('#menuBtn').addEventListener('click', () => { const o = document.body.classList.toggle('menu-open'); $('#menuBtn').setAttribute('aria-expanded', String(o)); });
-$('#scrim').addEventListener('click', () => { document.body.classList.remove('menu-open'); $('#menuBtn').setAttribute('aria-expanded', 'false'); });
-document.addEventListener('keydown', (e) => { if (e.key === 'Escape') document.body.classList.remove('menu-open'); });
+$('#scrim').addEventListener('click', closeMenu);
+$('#imgDlg').addEventListener('click', (e) => { if (e.target.id === 'imgDlg' || e.target.id === 'dlgClose') $('#imgDlg').close(); });
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') closeMenu();
+  if (e.key === '/' && !/INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName) && $('#q')) { e.preventDefault(); $('#q').focus(); }
+});
 
-fetch('/api/status').then((r) => r.json()).catch(() => ({ ai: false })).then((s) => {
+skeleton();
+api.status().then((s) => {
   state.ai = s;
-  $('#aiState').innerHTML = s.ai ? `<b>AI aktif</b><br>${esc(s.model)}` : '<b>Mode aturan saja</b><br>AI belum dikonfigurasi';
+  $('#aiState').innerHTML = s.ai ? `<b>AI aktif</b><br>${esc(s.model)}` : `<b>Mode aturan saja</b><br>${s.offline ? 'Server tidak terjangkau' : 'AI belum dikonfigurasi'}`;
   route();
 });

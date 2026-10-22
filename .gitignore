@@ -2,3 +2,4 @@ node_modules/
 .env
 _refs/
 .taste-skill/
+.e2e/
