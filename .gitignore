@@ -1,0 +1,4 @@
+node_modules/
+.env
+_refs/
+.taste-skill/

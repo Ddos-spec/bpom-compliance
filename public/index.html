@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tera · Pemeriksaan label</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="app.css">
+</head>
+<body>
+<div class="frame">
+  <header class="mbar">
+    <button class="icon-btn" id="menuBtn" aria-label="Buka menu" aria-expanded="false" aria-controls="sidebar"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 7h16M4 12h16M4 17h16"/></svg></button>
+    <span class="mbar-title" id="mbarTitle">Antrean pemeriksaan</span>
+    <a class="btn primary mbar-act" href="#/baru">Periksa baru</a>
+  </header>
+
+  <aside class="sidebar" id="sidebar">
+    <div class="brand">
+      <span class="mark" aria-hidden="true">T</span>
+      <span><b>Tera</b><small>Pemeriksaan label</small></span>
+    </div>
+    <div class="scope" title="Cakupan kerja">Pengawasan pangan olahan<small>Disperindag</small></div>
+    <nav>
+      <a class="nav-item" href="#/" data-nav="antrean"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 6h16M4 12h16M4 18h10"/></svg>Antrean <span class="nav-count" id="navCount"></span></a>
+      <a class="nav-item" href="#/baru" data-nav="baru"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 5v14M5 12h14"/></svg>Periksa label baru</a>
+      <a class="nav-item" href="#/aturan" data-nav="aturan"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M6 4h9l3 3v13H6zM9 11h6M9 15h6"/></svg>Dasar aturan</a>
+    </nav>
+    <div class="side-foot" id="aiState"></div>
+  </aside>
+  <div class="scrim" id="scrim"></div>
+
+  <main class="sheet" id="view" tabindex="-1"></main>
+</div>
+<script type="module" src="app.js"></script>
+</body>
+</html>
