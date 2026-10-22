@@ -122,6 +122,34 @@ const ok = (name, cond, extra = '') => { results.push([cond ? 'PASS' : 'FAIL', n
     await page.waitForTimeout(200);
     await page.goto(BASE);
     ok(T('reset -> data awal kembali (4 perlu keputusan)'), (await page.locator('.q-row').count()) === 4);
+    // Audit Estetika Visual Geometri (Zero Awkward Text Wrapping & Overlap)
+    const visualIssues = await page.evaluate(() => {
+      const issues = [];
+      const isVisible = (el) => {
+        const s = window.getComputedStyle(el);
+        return s.display !== 'none' && s.visibility !== 'hidden' && s.opacity !== '0';
+      };
+      const metaEls = document.querySelectorAll('.user-nip, .badge, .pill, [class*="badge"], [class*="pill"], .user-role-badge');
+      metaEls.forEach((el) => {
+        if (!isVisible(el) || el.children.length > 1) return;
+        const text = (el.innerText || '').trim();
+        if (text.length <= 3) return;
+        try {
+          const range = document.createRange();
+          range.selectNodeContents(el);
+          const rects = Array.from(range.getClientRects()).filter((r) => r.width > 2 && r.height > 2);
+          if (rects.length <= 1) return;
+          const fontSize = parseFloat(window.getComputedStyle(el).fontSize) || 12;
+          const uniqueTops = [];
+          rects.forEach((r) => {
+            if (!uniqueTops.some((top) => Math.abs(top - r.top) < Math.max(10, fontSize * 0.8))) uniqueTops.push(r.top);
+          });
+          if (uniqueTops.length > 1 && text.length < 40) issues.push(`${el.className}: "${text}" patah ${uniqueTops.length} baris`);
+        } catch (e) {}
+      });
+      return issues;
+    });
+    ok(T('estetika visual: bebas text-wrapping patah'), visualIssues.length === 0, visualIssues.join(' | '));
     if (label === 'mobile') {
       await page.click('#menuBtn');
       await page.waitForTimeout(300);

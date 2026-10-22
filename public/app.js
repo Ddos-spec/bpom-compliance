@@ -558,23 +558,30 @@ function updateUserBox() {
   const s = auth.currentSession();
   const u = s.user;
   const r = s.role;
+  const aiActive = Boolean(state.ai?.ai);
   box.innerHTML = `
     <div class="user-profile-card">
-      <div class="user-profile-row">
-        <div style="display:flex;align-items:center;gap:8px">
-          <div class="user-avatar">${esc((u.name || 'P')[0])}</div>
-          <div>
-            <div class="user-name">${esc(u.name)}</div>
-            <div class="user-nip">${esc(u.nip || '-')}</div>
-          </div>
+      <div class="user-profile-top">
+        <div class="user-avatar">${esc((u.name || 'P')[0])}</div>
+        <div class="user-meta">
+          <div class="user-name" title="${esc(u.name)}">${esc(u.name)}</div>
+          <div class="user-nip" title="NIP: ${esc(u.nip || '-')}">${esc(u.nip || '-')}</div>
         </div>
+      </div>
+      <div class="user-badges-row">
         <span class="user-role-badge ${esc(r.id)}">${esc(r.badge)}</span>
+        <span class="ai-engine-pill">
+          <span class="ai-engine-dot ${aiActive ? '' : 'off'}"></span>
+          ${aiActive ? 'AI Aktif' : 'Aturan'}
+        </span>
       </div>
       <div class="user-actions">
         <a href="#/login">Ganti Akun</a> · 
         <button id="logoutBtn" type="button">Keluar</button>
       </div>
     </div>`;
+  const foot = $('#aiState');
+  if (foot) foot.innerHTML = '';
   $('#logoutBtn')?.addEventListener('click', () => {
     auth.logout();
     updateUserBox();
@@ -746,6 +753,5 @@ document.addEventListener('keydown', (e) => {
 skeleton();
 api.status().then((s) => {
   state.ai = s;
-  $('#aiState').innerHTML = s.ai ? `<b>AI aktif</b><br>${esc(s.model)}` : `<b>Mode aturan saja</b><br>${s.offline ? 'Server tidak terjangkau' : 'AI belum dikonfigurasi'}`;
   route();
 });

@@ -23,7 +23,7 @@
   --radius-card: 8px; --radius-control: 6px; --radius-sheet: 16px;
   --font: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
   --mono: "IBM Plex Mono", ui-monospace, Consolas, monospace;
-  --gap: 16px; --pad: 24px; --sidebar: 228px; --inset: 8px;
+  --gap: 16px; --pad: 24px; --sidebar: 244px; --inset: 8px;
 }
 *, *::before, *::after { box-sizing: border-box; }
 html { -webkit-text-size-adjust: 100%; }
@@ -68,7 +68,7 @@ h1 { font-size: 22px; line-height: 28px; font-weight: 600; letter-spacing: -.005
 .actions { display: flex; gap: 8px; flex-wrap: wrap; }
 
 /* ---- controls ---- */
-.btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 36px; padding: 0 14px; border-radius: var(--radius-control); border: 1px solid var(--control); background: var(--surface); font-weight: 500; cursor: pointer; transition: background-color .15s ease, border-color .15s ease; }
+.btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 36px; padding: 0 14px; border-radius: var(--radius-control); border: 1px solid var(--control); background: var(--surface); font-weight: 500; white-space: nowrap; cursor: pointer; transition: background-color .15s ease, border-color .15s ease; }
 .btn:hover { background: var(--raised); }
 .btn:active { transform: translateY(1px); }
 .btn.primary { background: var(--text); border-color: var(--text); color: #fff; }
