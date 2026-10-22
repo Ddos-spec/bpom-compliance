@@ -90,10 +90,29 @@ const ok = (name, cond, extra = '') => { results.push([cond ? 'PASS' : 'FAIL', n
     await page.click('#photoBtn');
     ok(T('dialog foto terbuka'), await page.locator('#imgDlg[open]').count() === 1);
     await page.keyboard.press('Escape');
-    // aturan + setelan
+    // aturan + setelan + jdih + login
     await page.goto(BASE + '#/aturan');
     ok(T('aturan: 9 baris'), (await page.locator('.rule-row').count()) === 9);
     await shot('6-aturan');
+    await page.goto(BASE + '#/jdih');
+    ok(T('jdih: 6 regulasi terverifikasi'), (await page.locator('.jdih-card').count()) === 6);
+    await shot('8-jdih');
+    await page.click('#syncJdihBtn');
+    await page.waitForTimeout(600);
+    ok(T('jdih: sinkronisasi berhasil'), /sukses|cocok/i.test(await page.locator('#toast').innerText()));
+    await page.goto(BASE + '#/login');
+    ok(T('login: render form'), (await page.locator('#loginForm').count()) === 1);
+    await shot('9-login');
+    await page.click('.preset-btn[data-preset="auditor@disperindag.banten.go.id"]');
+    await page.waitForTimeout(300);
+    ok(T('login: beralih ke auditor'), /Hendro/i.test(await page.locator('#userBox').innerText()));
+    // uji pengesahan digital berita acara oleh auditor
+    await page.goto(BASE + '#/p/P-0412');
+    await page.click('#tabBA');
+    ok(T('ba: tombol tanda tangan digital muncul untuk auditor'), (await page.locator('#signBaBtn').count()) === 1);
+    await page.click('#signBaBtn');
+    await page.waitForTimeout(200);
+    ok(T('ba: stempel digital tersahkan'), await page.locator('#baSignProof').isVisible());
     await page.goto(BASE + '#/setelan');
     await page.waitForSelector('#exp');
     await shot('7-setelan');

@@ -1,0 +1,46 @@
+[package]
+name = "tera-backend"
+version = "1.0.0"
+edition = "2024"
+authors = ["Ddos-spec <setgraph69@gmail.com>"]
+description = "Tera BPOM & Disperindag Compliance Engine - Single Binary Axum Server"
+license = "Proprietary"
+
+[dependencies]
+# Async Runtime & HTTP Server
+tokio = { version = "1.43", features = ["full"] }
+axum = { version = "0.8", features = ["multipart", "macros"] }
+tower = { version = "0.5", features = ["util"] }
+tower-http = { version = "0.6", features = ["cors", "trace", "compression-br", "compression-gzip"] }
+
+# SQLite with WAL Mode & Compile-Time Safety
+sqlx = { version = "0.8", default-features = false, features = ["sqlite", "runtime-tokio", "tls-rustls", "macros", "chrono", "uuid"] }
+
+# Security & Authentication (Zero-Compromise)
+argon2 = { version = "0.5", features = ["std"] }
+jsonwebtoken = "9.3"
+rand = "0.8"
+
+# Serialization & Data
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+chrono = { version = "0.4", features = ["serde"] }
+uuid = { version = "1.11", features = ["v4", "serde"] }
+
+# Error Handling & Tracing
+thiserror = "2.0"
+anyhow = "1.0"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt", "time"] }
+
+# Static UI Bundler (Zero External Asset Dependency)
+rust-embed = { version = "8.5", features = ["compression"] }
+mime_guess = "2.0"
+
+[profile.release]
+opt-level = 3
+lto = "fat"
+codegen-units = 1
+panic = "abort"
+strip = true
+overflow-checks = true
