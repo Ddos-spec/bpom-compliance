@@ -3,3 +3,4 @@ node_modules/
 _refs/
 .taste-skill/
 .e2e/
+.vercel
