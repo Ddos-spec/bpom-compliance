@@ -56,12 +56,26 @@ export function shrinkImage(file, max = 1000, quality = 0.78) {
 
 export function remedyMessage(rec, res) {
   const miss = res.items.filter((i) => i.status === 'miss');
-  const rev = [...res.items.filter((i) => i.status === 'review').map((i) => i.label), ...res.claims.map((c) => `Klaim "${c.text}"`)];
+  const rev = [
+    ...res.items.filter((i) => i.status === 'review').map((i) => `${i.label} (${i.note || 'perlu ditinjau'})`),
+    ...(res.claims || []).map((c) => `Klaim "${c.teks || c.text}" (${c.jenis || 'perlu penyesuaian'})`)
+  ];
   const lines = [`Yth. ${rec.owner}, berikut hasil pemeriksaan label produk "${rec.name}":`, ''];
-  if (miss.length) { lines.push('Perlu dilengkapi:'); miss.forEach((i) => lines.push(`- ${i.label}: ${i.note || 'tidak ditemukan pada label'}`)); lines.push(''); }
-  if (rev.length) { lines.push('Perlu kami tinjau lebih lanjut:'); rev.forEach((t) => lines.push(`- ${t}`)); lines.push(''); }
-  if (!miss.length && !rev.length) lines.push('Seluruh keterangan wajib ditemukan pada pemeriksaan awal.');
-  else lines.push('Mohon perbaiki label, lalu kirim ulang fotonya kepada kami.');
-  lines.push('', 'Terima kasih.');
+  if (miss.length) {
+    lines.push('Perlu dilengkapi / diperbaiki pada kemasan:');
+    miss.forEach((i) => lines.push(`- ${i.label}: ${i.note || 'tidak ditemukan pada label'}`));
+    lines.push('');
+  }
+  if (rev.length) {
+    lines.push('Catatan pengawasan & verifikasi dinas:');
+    rev.forEach((t) => lines.push(`- ${t}`));
+    lines.push('');
+  }
+  if (!miss.length && !rev.length) {
+    lines.push('Seluruh 9 keterangan wajib ditemukan pada pemeriksaan awal.');
+  } else {
+    lines.push('Mohon lakukan penyesuaian desain label sesuai ketentuan PerBPOM No. 31/2018 jo No. 20/2021, lalu kirimkan revisi kemasan untuk validasi lanjutan.');
+  }
+  lines.push('', 'Bidang Standardisasi & Pengawasan', 'Dinas Perindustrian dan Perdagangan');
   return lines.join('\n');
 }

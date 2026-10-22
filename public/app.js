@@ -113,8 +113,17 @@ function bindQueue() {
 /* ---------- detail ---------- */
 function annotate(text, res) {
   const spans = [];
-  res.items.forEach((i) => { if (i.index !== null && i.evidence && (i.status === 'ok' || i.status === 'review')) spans.push({ s: i.index, e: Math.min(text.length, i.index + i.evidence.length), id: i.id, kind: i.status === 'ok' ? 'ok' : 'warn' }); });
-  res.claims.forEach((c, k) => spans.push({ s: c.index, e: c.index + c.text.length, id: `klaim${k}`, kind: 'warn' }));
+  (res.items || []).forEach((i) => {
+    if (i.index !== null && i.evidence && (i.status === 'ok' || i.status === 'review')) {
+      spans.push({ s: i.index, e: Math.min(text.length, i.index + i.evidence.length), id: i.id, kind: i.status === 'ok' ? 'ok' : 'warn' });
+    }
+  });
+  (res.claims || []).forEach((c, k) => {
+    const txt = c.teks || c.text || '';
+    if (txt && Number.isInteger(c.index)) {
+      spans.push({ s: c.index, e: Math.min(text.length, c.index + txt.length), id: `klaim${k}`, kind: 'warn' });
+    }
+  });
   spans.sort((a, b) => a.s - b.s);
   let out = '', pos = 0;
   for (const sp of spans) {
@@ -141,6 +150,7 @@ function renderDetail(id) {
   const r = store.byId(id);
   if (!r) { view.innerHTML = '<div class="empty"><p><b>Berkas tidak ditemukan.</b></p><a class="btn" href="#/">Kembali ke antrean</a></div>'; setNav('antrean', 'Berkas'); return; }
   const res = check(r);
+  const ext = res.extracted || {};
   const empty = !r.label.trim();
   const needFix = !empty && res.verdict.key !== 'lengkap';
 
@@ -150,54 +160,225 @@ function renderDetail(id) {
     : '<button class="btn" data-act="keputusan">Buka kembali</button>';
 
   const aiHtml = r.ai ? `
-    <div class="ai-block"><h3>Tinjauan AI</h3>
+    <div class="ai-block"><h3>Tinjauan Tambahan AI External</h3>
       <p class="q-find" style="margin-bottom:6px">${esc(r.ai.ringkasan || '')}</p>
       ${(r.ai.temuan || []).map((t) => `<div class="ai-item"><span class="pill ${t.tingkat === 'masalah' ? 'bad' : 'warn'}">${t.tingkat === 'masalah' ? 'Masalah' : 'Tinjau'}</span> <b>${esc(t.judul)}</b>${t.kutipan ? `<q>${esc(t.kutipan)}</q>` : ''}<span class="q-find">${esc(t.penjelasan)}</span></div>`).join('') || '<p class="q-find">AI tidak menambah temuan.</p>'}
     </div>` : '';
 
-  const msg = needFix ? api.remedyMessage(r, res) : '';
+  const msg = api.remedyMessage(r, res);
   const log = [...r.log].reverse();
+  const ba = res.beritaAcara || {};
 
   view.innerHTML = `
-    <div class="print-head"><b>Laporan pemeriksaan label</b><span>${esc(r.id)} · dicetak ${fmtTime(new Date().toISOString())}</span></div>
+    <div class="print-head"><b>Laporan Pengawasan Label Pangan</b><span>${esc(r.id)} · dicetak ${fmtTime(new Date().toISOString())}</span></div>
     <div class="crumb"><a href="#/">Antrean</a><span aria-hidden="true">/</span><span class="mono">${esc(r.id)}</span></div>
     <div class="title-row">
       <div><h1>${esc(r.name)}</h1><p class="sub">${esc(r.owner)} · diperiksa ${fmtDate(r.checked)} · ${esc(STAGE[r.stage])}</p></div>
-      <div class="actions"><button class="btn" id="printBtn">Cetak laporan</button>${actions}</div>
+      <div class="actions"><button class="btn" id="printBtn">Cetak Laporan / BA</button>${actions}</div>
     </div>
+
+    <!-- Dual-AI Processing Pipeline Indicator -->
+    <div class="pipeline-bar" role="region" aria-label="Alur Analisis Dual-AI">
+      <div class="pipeline-step active">
+        <span class="p-badge">1</span>
+        <span><b>AI 1: Semantic Extractor</b> (Entitas Label Terurai)</span>
+      </div>
+      <span class="pipeline-arrow">➔</span>
+      <div class="pipeline-step active">
+        <span class="p-badge">2</span>
+        <span><b>AI 2: Regulatory Auditor</b> (Audit PerBPOM & Berita Acara)</span>
+      </div>
+    </div>
+
     ${empty
       ? `<div class="verdict"><span class="v">Teks label belum dibaca</span><span class="d">Ketik atau tempel teks dari foto agar pemeriksaan bisa jalan.</span></div>`
       : `<div class="verdict"><span class="v ${vcls(res.verdict.key)}">${esc(res.verdict.text)}</span><span class="d">${esc(res.verdict.detail)}</span></div>`}
+    
     <div class="split">
+      <!-- Kolom Kiri: Hasil AI 1 (Input & Ekstraksi Entitas) -->
       <div class="col">
-        ${r.image ? `<section class="panel"><h2>Foto label</h2><button class="photo" id="photoBtn" aria-label="Perbesar foto label"><img alt="Foto label ${esc(r.name)}" src="${r.image}"></button></section>` : ''}
-        <section class="panel"><div class="ph"><h2>Teks label</h2><button class="btn sm" id="editBtn">${empty ? 'Isi teks' : 'Ubah teks'}</button></div>
-          <p class="cap">Garis bawah menandai bukti yang dipakai. Klik untuk melompat ke temuannya.</p>
-          <div id="labelBox">${empty ? '<p class="q-find">Belum ada teks.</p>' : `<div class="label-text" id="labelText">${annotate(r.label, res)}</div>`}</div></section>
-        ${nieHtml(r, res)}
-        ${needFix ? `<section class="panel"><h2>Pesan untuk pelaku usaha</h2><p class="cap">Siap dikirim lewat WhatsApp atau disalin.</p><pre class="msg" id="msgText">${esc(msg)}</pre>
-          <div class="actions" style="margin-top:12px"><button class="btn" id="copyBtn">Salin pesan</button><a class="btn" target="_blank" rel="noopener" href="https://wa.me/?text=${encodeURIComponent(msg)}">Kirim lewat WhatsApp</a></div></section>` : ''}
-        <section class="panel"><h2>Catatan petugas</h2><p class="cap">Tersimpan otomatis saat Anda selesai mengetik.</p>
-          <textarea class="input note" id="note" rows="3" placeholder="Tulis catatan untuk berkas ini">${esc(r.note)}</textarea></section>
-        <section class="panel"><h2>Riwayat</h2><ol class="log">${log.map((l) => `<li><time class="num">${fmtTime(l.t)}</time><span>${esc(l.text)}</span></li>`).join('')}</ol></section>
-      </div>
-      <section class="panel"><h2>Keterangan wajib</h2><p class="cap">9 butir, ${esc(res.items[0].pasal)} Peraturan BPOM 31/2018 (diubah 20/2021)</p>
-        ${empty ? '<p class="q-find">Belum diperiksa karena teks label kosong.</p>' : res.items.map((i) => `
-          <div class="finding">
-            <span class="st ${i.status}" aria-hidden="true">${MARK[i.status]}</span>
-            <div><div class="t">${esc(i.label)}</div>
-              ${i.note ? `<div class="n">${esc(i.note)}</div>` : ''}
-              ${i.evidence && i.status !== 'miss' ? (i.index !== null ? `<button class="ev" data-ref="${i.id}">${esc(i.evidence)}</button>` : `<div class="ev plain">${esc(i.evidence)}</div>`) : ''}
+        ${r.image ? `<section class="panel"><h2>Foto Fisik Label</h2><button class="photo" id="photoBtn" aria-label="Perbesar foto label"><img alt="Foto label ${esc(r.name)}" src="${r.image}"></button></section>` : ''}
+        
+        <section class="panel">
+          <div class="tab-row" role="tablist">
+            <button class="tab-btn" id="tabAnatomy" role="tab" aria-selected="true">Anatomi Entitas (AI 1)</button>
+            <button class="tab-btn" id="tabRaw" role="tab" aria-selected="false">Teks Mentah & Bukti</button>
+          </div>
+
+          <!-- Tab Content 1: Anatomi Terstruktur (Hasil AI 1) -->
+          <div id="contentAnatomy" class="entity-grid">
+            <div class="entity-card">
+              <h3><span>Bahan Baku & Komposisi</span><small class="mono">${ext.komposisi?.length || 0} bahan</small></h3>
+              <div class="entity-pills">
+                ${(ext.komposisi || []).map(b => `<span class="entity-pill">${esc(b)}</span>`).join('') || '<span class="q-find">Tidak terdeteksi</span>'}
+              </div>
+              ${ext.alergen_terdeteksi?.length ? `<div style="margin-top:8px"><small style="font-weight:600;color:#92400e">⚠️ Alergen Wajib Cetak Tebal:</small> <div class="entity-pills" style="margin-top:4px">${ext.alergen_terdeteksi.map(a => `<span class="entity-pill allergen">${esc(a)}</span>`).join('')}</div></div>` : ''}
+              ${ext.btp_terdeteksi?.length ? `<div style="margin-top:8px"><small style="font-weight:600;color:#1e40af">🧪 BTP Terdeteksi:</small> <div class="entity-pills" style="margin-top:4px">${ext.btp_terdeteksi.map(b => `<span class="entity-pill btp">${esc(b)}</span>`).join('')}</div></div>` : ''}
             </div>
-            <span class="pill ${PILL[i.status]}">${WORD[i.status]}</span>
-          </div>`).join('')}
-        ${res.claims.length ? `<div class="ai-block"><h3>Klaim pada label</h3>${res.claims.map((c, k) => `<div class="ai-item"><span class="pill warn">Tinjau</span> <button class="ev" data-ref="klaim${k}">${esc(c.text)}</button><div class="q-find">${esc(c.note)}</div></div>`).join('')}</div>` : ''}
-        ${aiHtml}
-        <p class="note-box">Ini pemeriksaan awal. Mesin aturan hanya mencari keberadaan keterangan di teks, bukan menilai kebenarannya, dan nomor izin hanya diperiksa formatnya kecuali sudah dicek ke BPOM. Keputusan akhir ada pada petugas.</p>
-      </section>
+
+            <div class="entity-card">
+              <h3><span>Kuantitas & Legalitas</span></h3>
+              <div class="kv" style="padding:4px 0"><span>Berat Bersih</span><span class="mono">${ext.berat_bersih?.nilai ? `${ext.berat_bersih.nilai} ${ext.berat_bersih.satuan}` : '<span class="pill bad">Tidak ada</span>'}</span></div>
+              <div class="kv" style="padding:4px 0"><span>Izin Edar</span><span class="mono">${ext.nie?.tipe ? `${ext.nie.tipe} ${ext.nie.nomor}` : '<span class="pill bad">Tidak ada</span>'}</span></div>
+              <div class="kv" style="padding:4px 0"><span>Halal</span><span>${ext.halal?.tercantum ? '<span class="pill ok">Tercantum</span>' : '<span class="pill warn">Belum tercantum</span>'}</span></div>
+              <div class="kv" style="padding:4px 0"><span>Kedaluwarsa</span><span class="mono">${esc(ext.kedaluwarsa || '—')}</span></div>
+            </div>
+
+            <div class="entity-card">
+              <h3><span>Produsen & Lokasi</span></h3>
+              <div class="kv" style="padding:4px 0"><span>Nama Usaha</span><b>${esc(ext.produsen?.nama || r.owner)}</b></div>
+              <div class="kv" style="padding:4px 0"><span>Domisili</span><span>${esc(ext.produsen?.kota || 'Belum terdeteksi')}</span></div>
+              <div class="kv" style="padding:4px 0"><span>Alamat Detail</span><small class="q-find">${esc(ext.produsen?.alamat || 'Tidak lengkap')}</small></div>
+            </div>
+
+            ${ext.klaim?.length ? `
+            <div class="entity-card" style="border-color:#fca5a5">
+              <h3 style="color:var(--negative)"><span>Klaim Pemasaran Terdeteksi</span></h3>
+              ${ext.klaim.map(k => `
+                <div class="claim-tag ${k.risiko === 'Kritis' ? 'kritis' : ''}">
+                  <span class="pill ${k.risiko === 'Kritis' ? 'bad' : 'warn'}">${esc(k.risiko)}</span>
+                  <div><b>${esc(k.jenis)}</b><br><q>${esc(k.teks)}</q></div>
+                </div>`).join('')}
+            </div>` : ''}
+          </div>
+
+          <!-- Tab Content 2: Teks Mentah -->
+          <div id="contentRaw" style="display:none">
+            <div class="ph" style="margin-bottom:8px"><h2>Teks Label Mentah</h2><button class="btn sm" id="editBtn">${empty ? 'Isi teks' : 'Ubah teks'}</button></div>
+            <p class="cap">Garis bawah menandai bukti yang dipakai. Klik untuk melompat ke temuannya.</p>
+            <div id="labelBox">${empty ? '<p class="q-find">Belum ada teks.</p>' : `<div class="label-text" id="labelText">${annotate(r.label, res)}</div>`}</div>
+          </div>
+        </section>
+
+        ${nieHtml(r, res)}
+
+        <section class="panel"><h2>Catatan Petugas Pengawas</h2><p class="cap">Tersimpan otomatis saat selesai mengetik.</p>
+          <textarea class="input note" id="note" rows="2" placeholder="Tulis catatan pengawasan untuk berkas ini">${esc(r.note)}</textarea></section>
+        
+        <section class="panel"><h2>Riwayat Audit</h2><ol class="log">${log.map((l) => `<li><time class="num">${fmtTime(l.t)}</time><span>${esc(l.text)}</span></li>`).join('')}</ol></section>
+      </div>
+
+      <!-- Kolom Kanan: Hasil AI 2 (Audit Regulasi & Output Laporan) -->
+      <div class="col">
+        <section class="panel">
+          <div class="tab-row" role="tablist">
+            <button class="tab-btn" id="tabChecklist" role="tab" aria-selected="true">Checklist 9 Butir</button>
+            <button class="tab-btn" id="tabBA" role="tab" aria-selected="false">Berita Acara Dinas</button>
+            <button class="tab-btn" id="tabWA" role="tab" aria-selected="false">Draft Pesan WhatsApp</button>
+          </div>
+
+          <!-- Tab Content A: Checklist 9 Butir Wajib -->
+          <div id="contentChecklist">
+            <h2>Keterangan Wajib Label</h2>
+            <p class="cap">9 butir, Peraturan BPOM No. 31 Tahun 2018 jo No. 20 Tahun 2021</p>
+            ${empty ? '<p class="q-find">Belum diperiksa karena teks label kosong.</p>' : res.items.map((i) => `
+              <div class="finding">
+                <span class="st ${i.status}" aria-hidden="true">${MARK[i.status]}</span>
+                <div><div class="t">${esc(i.label)}</div>
+                  ${i.note ? `<div class="n">${esc(i.note)}</div>` : ''}
+                  ${i.evidence && i.status !== 'miss' ? (i.index !== null ? `<button class="ev" data-ref="${i.id}">${esc(i.evidence)}</button>` : `<div class="ev plain">${esc(i.evidence)}</div>`) : ''}
+                </div>
+                <span class="pill ${PILL[i.status]}">${WORD[i.status]}</span>
+              </div>`).join('')}
+            ${aiHtml}
+            <p class="note-box">Pemeriksaan dilakukan melalui Dual-AI Engine (Ekstraksi Semantik ➔ Audit Peraturan). Verifikasi naskah fisik tetap menjadi kewenangan penuh petugas pemeriksa.</p>
+          </div>
+
+          <!-- Tab Content B: Berita Acara Dinas Disperindag -->
+          <div id="contentBA" style="display:none">
+            <div class="ba-paper">
+              <div class="ba-head">
+                <div class="ba-instansi">${esc(ba.instansi || 'DINAS PERINDUSTRIAN DAN PERDAGANGAN')}</div>
+                <div class="ba-subinstansi">${esc(ba.unit || 'Bidang Standardisasi & Pengawasan')}</div>
+                <div class="ba-title">BERITA ACARA PENGAWASAN LABEL PANGAN OLAHAN</div>
+                <div class="ba-nomor">Nomor: ${esc(ba.nomor || 'BA-WAS/2026/001')}</div>
+              </div>
+              <div class="ba-sec">
+                <div class="ba-sec-title">1. Data Produk & Pelaku Usaha</div>
+                <div>Nama Produk: <b>${esc(r.name)}</b></div>
+                <div>Pelaku Usaha: <b>${esc(r.owner)}</b></div>
+                <div>Tanggal Pengawasan: ${esc(ba.tanggal || '-')}</div>
+              </div>
+              <div class="ba-sec">
+                <div class="ba-sec-title">2. Temuan Ketidaksesuaian (${(ba.temuan || []).length} Butir)</div>
+                ${(ba.temuan || []).length ? (ba.temuan || []).map(t => `<li class="ba-item">${esc(t)}</li>`).join('') : '<div class="q-find">Tidak ditemukan pelanggaran pada keterangan wajib.</div>'}
+                ${(ba.pelanggaran_klaim || []).length ? `<div style="margin-top:6px;color:var(--negative)"><b>Pelanggaran Klaim Pemasaran:</b></div>${ba.pelanggaran_klaim.map(k => `<li class="ba-item" style="color:var(--negative)">${esc(k)}</li>`).join('')}` : ''}
+              </div>
+              <div class="ba-sec">
+                <div class="ba-sec-title">3. Dasar Hukum Pengawasan</div>
+                ${(ba.dasar_hukum || []).map(d => `<li class="ba-item" style="color:var(--muted)">${esc(d)}</li>`).join('')}
+              </div>
+              <div class="ba-sec">
+                <div class="ba-sec-title">4. Kesimpulan & Rekomendasi Petugas</div>
+                <div class="ba-rekomendasi">${esc(ba.rekomendasi || '-')}</div>
+              </div>
+              <div class="ba-foot">
+                <div>Petugas Pemeriksa Disperindag</div>
+                <div>Tanda Tangan Pelaku Usaha</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Tab Content C: Pesan Edukasi WhatsApp -->
+          <div id="contentWA" style="display:none">
+            <h2>Pesan Edukasi Pelaku Usaha</h2>
+            <p class="cap">Diformat agar jelas, santun, dan langsung dapat dikirim ke kontak WhatsApp pelaku UMKM.</p>
+            <pre class="msg" id="msgText">${esc(msg)}</pre>
+            <div class="actions" style="margin-top:12px">
+              <button class="btn primary" id="copyBtn">Salin Pesan WhatsApp</button>
+              <a class="btn" target="_blank" rel="noopener" href="https://wa.me/?text=${encodeURIComponent(msg)}">Buka di WhatsApp Web</a>
+            </div>
+          </div>
+        </section>
+      </div>
     </div>`;
+
   bindDetail(r, res);
+  bindTabs();
   setNav('antrean', r.name);
+}
+
+function bindTabs() {
+  const switchTab = (activeBtn, activeContent, allBtns, allContents) => {
+    allBtns.forEach(b => b.setAttribute('aria-selected', 'false'));
+    allContents.forEach(c => c.style.display = 'none');
+    activeBtn.setAttribute('aria-selected', 'true');
+    activeContent.style.display = 'grid';
+  };
+
+  // Tab Kiri: Anatomi vs Teks
+  const tabAnatomy = $('#tabAnatomy');
+  const tabRaw = $('#tabRaw');
+  const contentAnatomy = $('#contentAnatomy');
+  const contentRaw = $('#contentRaw');
+
+  if (tabAnatomy && tabRaw) {
+    tabAnatomy.addEventListener('click', () => switchTab(tabAnatomy, contentAnatomy, [tabAnatomy, tabRaw], [contentAnatomy, contentRaw]));
+    tabRaw.addEventListener('click', () => {
+      switchTab(tabRaw, contentRaw, [tabAnatomy, tabRaw], [contentAnatomy, contentRaw]);
+      contentRaw.style.display = 'block';
+    });
+  }
+
+  // Tab Kanan: Checklist vs BA vs WA
+  const tabChecklist = $('#tabChecklist');
+  const tabBA = $('#tabBA');
+  const tabWA = $('#tabWA');
+  const contentChecklist = $('#contentChecklist');
+  const contentBA = $('#contentBA');
+  const contentWA = $('#contentWA');
+
+  if (tabChecklist && tabBA && tabWA) {
+    tabChecklist.addEventListener('click', () => switchTab(tabChecklist, contentChecklist, [tabChecklist, tabBA, tabWA], [contentChecklist, contentBA, contentWA]));
+    tabBA.addEventListener('click', () => {
+      switchTab(tabBA, contentBA, [tabChecklist, tabBA, tabWA], [contentChecklist, contentBA, contentWA]);
+      contentBA.style.display = 'block';
+    });
+    tabWA.addEventListener('click', () => {
+      switchTab(tabWA, contentWA, [tabChecklist, tabBA, tabWA], [contentChecklist, contentBA, contentWA]);
+      contentWA.style.display = 'block';
+    });
+  }
 }
 
 function bindDetail(r, res) {
@@ -233,6 +414,11 @@ function bindDetail(r, res) {
   });
   $$('[data-ref]', view).forEach((el) => el.addEventListener('click', () => {
     const ref = el.dataset.ref;
+    // Otomatis buka tab teks mentah jika tertutup
+    const tabRaw = $('#tabRaw');
+    if (tabRaw && tabRaw.getAttribute('aria-selected') !== 'true') {
+      tabRaw.click();
+    }
     $$('#labelText mark').forEach((m) => m.classList.toggle('on', m.dataset.ref === ref));
     $(`#labelText mark[data-ref="${ref}"]`)?.scrollIntoView({ block: 'center', behavior: reduced ? 'auto' : 'smooth' });
   }));

@@ -48,11 +48,13 @@ const ok = (name, cond, extra = '') => { results.push([cond ? 'PASS' : 'FAIL', n
     await page.waitForTimeout(200);
     ok(T('catatan masuk toast'), /disimpan/i.test(await page.locator('#toast').innerText()));
     // edit teks label
+    await page.click('#tabRaw');
     await page.click('#editBtn');
     await page.fill('#labelEdit', 'ABC\nKomposisi: x\nBerat bersih: 10 g');
     await page.click('#saveLabel');
     await page.waitForSelector('.verdict');
-    ok(T('edit teks -> periksa ulang -> perlu perbaikan'), /Perlu perbaikan/.test(await page.locator('.verdict .v').innerText()));
+    ok(T('edit teks -> periksa ulang -> perlu perbaikan'), /perlu perbaikan/i.test(await page.locator('.verdict .v').innerText()));
+    await page.click('#tabWA');
     ok(T('pesan pelaku usaha muncul'), (await page.locator('#msgText').count()) === 1);
     await shot('3-detail-perbaikan');
     await page.click('[data-act="perbaikan"]');
@@ -71,7 +73,7 @@ const ok = (name, cond, extra = '') => { results.push([cond ? 'PASS' : 'FAIL', n
     await page.click('#go');
     await page.waitForSelector('.verdict', { timeout: 8000 });
     ok(T('submit -> detail berkas baru'), /#\/p\/P-0\d+/.test(page.url()) && (await page.locator('.finding').count()) === 9);
-    ok(T('berkas baru: tanpa halal -> perlu perbaikan'), /Perlu perbaikan/.test(await page.locator('.verdict .v').innerText()));
+    ok(T('berkas baru: tanpa halal -> perlu perbaikan'), /perlu perbaikan/i.test(await page.locator('.verdict .v').innerText()));
     // foto
     await page.goto(BASE + '#/baru');
     await page.waitForSelector('#f');
