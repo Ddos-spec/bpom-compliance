@@ -1,0 +1,9 @@
+.git
+.github
+crates
+e2e
+.e2e
+_refs
+*.png
+*.log
+vps_check.cjs

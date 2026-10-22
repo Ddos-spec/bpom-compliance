@@ -1,0 +1,8 @@
+.git
+.github
+crates
+e2e
+.e2e
+_refs
+*.png
+*.log
