@@ -65,12 +65,15 @@ export const PRESET_USERS = [
 
 export function currentSession() {
   try {
+    if (localStorage.getItem('tera.auth.logged_out') === '1') {
+      return null;
+    }
     const raw = localStorage.getItem(AUTH_KEY);
     if (raw) return JSON.parse(raw);
   } catch (e) {
     console.error('Failed reading auth state', e);
   }
-  // Default session awal (Petugas Lapangan aktif) agar siap pakai tanpa blokir
+  // Default session awal (Petugas Lapangan aktif) agar siap pakai pertama kali
   const def = {
     user: PRESET_USERS[0],
     role: ROLES.petugas,
@@ -79,6 +82,11 @@ export function currentSession() {
   };
   localStorage.setItem(AUTH_KEY, JSON.stringify(def));
   return def;
+}
+
+export function isLoggedIn() {
+  const s = currentSession();
+  return Boolean(s && s.user);
 }
 
 export function login(email, password = '') {
@@ -93,14 +101,15 @@ export function login(email, password = '') {
     token: 'tera-token-' + Math.random().toString(36).substring(2),
     loggedInAt: new Date().toISOString(),
   };
+  localStorage.removeItem('tera.auth.logged_out');
   localStorage.setItem(AUTH_KEY, JSON.stringify(session));
   return session;
 }
 
 export function logout() {
+  localStorage.setItem('tera.auth.logged_out', '1');
   localStorage.removeItem(AUTH_KEY);
-  // Re-init default minimal
-  return currentSession();
+  return null;
 }
 
 export function hasPermission(perm) {

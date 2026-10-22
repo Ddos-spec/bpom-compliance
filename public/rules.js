@@ -181,13 +181,20 @@ export function runRules(text, form = {}) {
   // Evaluasi 9 Pasal Wajib
   const items = ITEMS.map((it) => {
     const r = it.test(t, form, extracted);
+    const evidence = r.evidence || '';
+    let index = null;
+    if (evidence && t) {
+      const idx = t.toLowerCase().indexOf(evidence.toLowerCase());
+      if (idx !== -1) index = idx;
+    }
     return {
       id: it.id,
       label: it.label,
       pasal: it.pasal,
       status: r.status,
       note: r.note || '',
-      evidence: r.evidence || '',
+      evidence,
+      index,
       items: r.items || null
     };
   });

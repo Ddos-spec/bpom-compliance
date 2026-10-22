@@ -17,8 +17,11 @@
 <div class="frame">
   <header class="mbar">
     <button class="icon-btn" id="menuBtn" aria-label="Buka menu" aria-expanded="false" aria-controls="sidebar"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 7h16M4 12h16M4 17h16"/></svg></button>
-    <span class="mbar-title" id="mbarTitle">Antrean pemeriksaan</span>
-    <a class="btn primary mbar-act" href="#/baru">Periksa baru</a>
+    <span class="mbar-title" id="mbarTitle">Beranda Operasional</span>
+    <div style="display:flex;align-items:center;gap:6px">
+      <a class="btn primary mbar-act" href="#/baru" style="font-size:12px;padding:0 10px;min-height:30px">Periksa baru</a>
+      <div id="mbarAuthSlot"></div>
+    </div>
   </header>
 
   <aside class="sidebar" id="sidebar">
@@ -33,10 +36,11 @@
       <a class="nav-item" href="#/baru" data-nav="baru"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 5v14M5 12h14"/></svg>Periksa label baru</a>
       <a class="nav-item" href="#/aturan" data-nav="aturan"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M6 4h9l3 3v13H6zM9 11h6M9 15h6"/></svg>Dasar aturan</a>
       <a class="nav-item" href="#/jdih" data-nav="jdih"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>Regulasi JDIH</a>
+      <a class="nav-item" href="#/landing" data-nav="landing"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>Portal Publik & Demo</a>
     </nav>
     <nav class="bottom-nav" aria-label="Menu pengaturan">
       <a class="nav-item" href="#/setelan" data-nav="setelan"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="3"/><path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M18.4 5.6l-2.1 2.1M7.7 16.3l-2.1 2.1"/></svg>Pengaturan</a>
-      <a class="nav-item" href="#/login" data-nav="login"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4M10 17l5-5-5-5M15 12H3"/></svg>Masuk Akun</a>
+      <div id="authNavSlot"></div>
     </nav>
     <div id="userBox"></div>
     <div class="side-foot" id="aiState"></div>

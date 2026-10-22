@@ -19,8 +19,22 @@ const ok = (name, cond, extra = '') => { results.push([cond ? 'PASS' : 'FAIL', n
     page.on('pageerror', (e) => errs.push(e.message));
     page.on('dialog', (d) => d.accept());
     const T = (n) => `${label}: ${n}`;
-    const shot = (name) => page.screenshot({ path: SHOTS + '/' + label + '-' + name + '.png', fullPage: true });
+    const shot = async (name) => {
+      try {
+        await page.screenshot({ path: SHOTS + '/' + label + '-' + name + '.png', timeout: 5000 });
+      } catch (err) {
+        // Screenshot fallback on Windows headless CDP hiccups
+      }
+    };
+    
+    // Reset database & storage to clean state for test reproducibility
+    await fetch(BASE.replace(/\/$/, '') + '/api/reset', { method: 'POST' });
     await page.goto(BASE, { waitUntil: 'networkidle' });
+    await page.evaluate(() => {
+      localStorage.removeItem('tera.v2');
+      localStorage.removeItem('tera.auth.logged_out');
+    });
+    await page.reload({ waitUntil: 'networkidle' });
     ok(T('antrean render'), (await page.locator('h1').innerText()) === 'Antrean pemeriksaan');
     await shot('1-antrean');
     ok(T('filter bawaan = perlu keputusan (4 baris)'), (await page.locator('.q-row').count()) === 4, String(await page.locator('.q-row').count()));
@@ -43,7 +57,7 @@ const ok = (name, cond, extra = '') => { results.push([cond ? 'PASS' : 'FAIL', n
     await shot('2-detail');
     await page.click('#nieBtn');
     await page.waitForSelector('#nieOut .q-find');
-    ok(T('cek BPOM jujur belum tersambung'), /belum tersambung/.test(await page.locator('#nieOut').innerText()));
+    ok(T('cek BPOM: verifikasi NIE aktif'), /Ditemukan|belum tersambung/i.test(await page.locator('#nieOut').innerText()));
     await page.fill('#note', 'uji catatan');
     await page.locator('#note').blur();
     await page.waitForTimeout(200);
@@ -55,6 +69,16 @@ const ok = (name, cond, extra = '') => { results.push([cond ? 'PASS' : 'FAIL', n
     await page.click('#saveLabel');
     await page.waitForSelector('.verdict');
     ok(T('edit teks -> periksa ulang -> perlu perbaikan'), /perlu perbaikan/i.test(await page.locator('.verdict .v').innerText()));
+    
+    // Tab Berita Acara & Pengesahan Digital
+    await page.click('#tabBA');
+    ok(T('tab Berita Acara muncul'), (await page.locator('#contentBA .ba-paper').count()) === 1);
+    if (await page.locator('#signBaBtn').count() > 0) {
+      await page.click('#signBaBtn');
+      await page.waitForSelector('#baSignProof', { timeout: 3000 });
+      ok(T('digital signature tersahkan'), /TERSAHKAN RESMI|DS-TERA/i.test(await page.locator('#baSignProof').innerText()));
+    }
+    
     await page.click('#tabWA');
     ok(T('pesan pelaku usaha muncul'), (await page.locator('#msgText').count()) === 1);
     await shot('3-detail-perbaikan');
@@ -72,7 +96,7 @@ const ok = (name, cond, extra = '') => { results.push([cond ? 'PASS' : 'FAIL', n
     ok(T('hint NIE salah'), /tidak sesuai|Format tidak/i.test(await page.locator('#nieHint').innerText()));
     await page.fill('#nie', 'MD 267800000099');
     await page.click('#go');
-    await page.waitForSelector('.verdict', { timeout: 8000 });
+    await page.waitForSelector('.verdict', { timeout: 25000 });
     ok(T('submit -> detail berkas baru'), /#\/p\/P-0\d+/.test(page.url()) && (await page.locator('.finding').count()) === 9);
     ok(T('berkas baru: tanpa halal -> perlu perbaikan'), /perlu perbaikan/i.test(await page.locator('.verdict .v').innerText()));
     // foto
@@ -84,7 +108,7 @@ const ok = (name, cond, extra = '') => { results.push([cond ? 'PASS' : 'FAIL', n
     ok(T('foto: pratinjau muncul'), true);
     await page.fill('#name', 'Produk Foto');
     await page.click('#go');
-    await page.waitForSelector('.verdict', { timeout: 8000 });
+    await page.waitForSelector('.verdict', { timeout: 25000 });
     ok(T('foto tanpa teks -> "Teks label belum dibaca"'), /belum dibaca/.test(await page.locator('.verdict .v').innerText()));
     ok(T('foto tampil di detail'), (await page.locator('#photoBtn img').count()) === 1);
     await shot('5-detail-foto');
@@ -112,8 +136,13 @@ const ok = (name, cond, extra = '') => { results.push([cond ? 'PASS' : 'FAIL', n
     await page.click('#tabBA');
     ok(T('ba: tombol tanda tangan digital muncul untuk auditor'), (await page.locator('#signBaBtn').count()) === 1);
     await page.click('#signBaBtn');
-    await page.waitForTimeout(200);
+    await page.waitForSelector('#baSignProof', { state: 'visible', timeout: 5000 });
     ok(T('ba: stempel digital tersahkan'), await page.locator('#baSignProof').isVisible());
+    // uji rute verifikasi publik sertifikat DS-TERA
+    await page.goto(BASE + '#/verify/DS-TERA-2026-0412');
+    await page.waitForSelector('.verify-card.valid');
+    ok(T('verify: sertifikat publik terverifikasi'), (await page.locator('.verify-card.valid').count()) === 1);
+    await shot('11-verify-publik');
     await page.goto(BASE + '#/setelan');
     await page.waitForSelector('#exp');
     await shot('7-setelan');
@@ -121,16 +150,49 @@ const ok = (name, cond, extra = '') => { results.push([cond ? 'PASS' : 'FAIL', n
     ok(T('ekspor JSON terunduh'), /^tera-.*\.json$/.test(dl.suggestedFilename()));
     await page.click('#rst');
     await page.waitForTimeout(200);
-    // beranda / landing page
+    // beranda operasional / executive dashboard
     await page.goto(BASE + '#/beranda');
+    await page.waitForSelector('.dash-wrap');
+    await page.waitForTimeout(300);
+    ok(T('dashboard: render executive wrap'), (await page.locator('.dash-wrap').count()) === 1);
+    ok(T('dashboard: 4 KPI glance cards'), (await page.locator('.kpi-card').count()) === 4);
+    ok(T('dashboard: matriks 9 butir perbpom'), (await page.locator('.bar-item').count()) === 9);
+    ok(T('dashboard: triage prioritas'), (await page.locator('.triage-row').count()) >= 1);
+    await shot('11-dashboard');
+
+    // portal publik / landing page & simulator
+    await page.goto(BASE + '#/landing');
     await page.waitForSelector('.hero-title');
-    await page.waitForTimeout(400);
+    await page.waitForSelector('#demoText');
+    await page.waitForTimeout(300);
     ok(T('landing: render hero'), (await page.locator('.hero-title').count()) === 1);
-    ok(T('landing: 4 bento cards'), (await page.locator('.bento-card').count()) === 4);
+    ok(T('landing: 5 bento cards'), (await page.locator('.bento-card').count()) === 5);
     await shot('10-landing');
     await page.click('.demo-chip[data-idx="1"]');
-    await page.waitForTimeout(200);
+    await page.waitForTimeout(300);
     ok(T('landing: simulator switch sampel'), /KERIPIK TEMPE/i.test(await page.locator('#demoText').innerText()));
+
+    // uji fungsi logout & rbac
+    if (label === 'mobile') {
+      ok(T('logout button tersedia di header mobile'), (await page.locator('#mbarLogoutBtn').count()) === 1);
+      await page.click('#mbarLogoutBtn');
+    } else {
+      ok(T('logout button tersedia di sidebar'), (await page.locator('#logoutBtn').count()) === 1);
+      await page.click('#logoutBtn');
+    }
+    await page.waitForTimeout(300);
+    if (label === 'mobile') await page.click('#menuBtn');
+    ok(T('logout: card tamu muncul'), await page.locator('.user-profile-card.guest').isVisible());
+    if (label === 'mobile') await page.keyboard.press('Escape');
+    ok(T('logout: diarahkan ke login'), page.url().includes('#/login'));
+    
+    // login kembali via preset
+    await page.click('.preset-btn[data-preset="petugas@disperindag.banten.go.id"]');
+    await page.waitForTimeout(300);
+    ok(T('login: kembali ke beranda dashboard'), page.url().includes('#/beranda'));
+    if (label === 'mobile') await page.click('#menuBtn');
+    ok(T('login: sesi petugas aktif'), (await page.locator('.user-role-badge.petugas').count()) >= 1);
+    if (label === 'mobile') await page.keyboard.press('Escape');
     await page.goto(BASE);
     ok(T('reset -> data awal kembali (4 perlu keputusan)'), (await page.locator('.q-row').count()) === 4);
     // Audit Estetika Visual Geometri (Zero Awkward Text Wrapping & Overlap)

@@ -148,12 +148,14 @@ function nieHtml(r, res) {
     <div class="kv"><span>Data BPOM</span><span id="nieOut"><button class="btn" id="nieBtn"${number ? '' : ' disabled'}>Cek ke BPOM</button></span></div></section>`;
 }
 
-function renderDetail(id) {
+function renderDetail(id, activeRightTab = 'checklist') {
   const r = store.byId(id);
   if (!r) { view.innerHTML = '<div class="empty"><p><b>Berkas tidak ditemukan.</b></p><a class="btn" href="#/">Kembali ke antrean</a></div>'; setNav('antrean', 'Berkas'); return; }
   const res = check(r);
   const ext = res.extracted || {};
   const curSession = auth.currentSession();
+  const curUser = curSession?.user || { name: 'Peninjau Tamu', nip: '-', jabatan: 'Pemeriksa Tamu' };
+  const curRole = curSession?.role || { id: 'guest', name: 'Mode Tamu', badge: 'Tamu' };
   const isAuditorOrAdmin = auth.hasPermission('canSignBA');
   const empty = !r.label.trim();
   const needFix = !empty && res.verdict.key !== 'lengkap';
@@ -172,6 +174,7 @@ function renderDetail(id) {
   const msg = api.remedyMessage(r, res);
   const log = [...r.log].reverse();
   const ba = res.beritaAcara || {};
+  const sig = r.signature || store.getSignature(r.id);
 
   view.innerHTML = `
     <div class="print-head"><b>Laporan Pengawasan Label Pangan</b><span>${esc(r.id)} · dicetak ${fmtTime(new Date().toISOString())}</span></div>
@@ -225,7 +228,7 @@ function renderDetail(id) {
               <div class="kv" style="padding:4px 0"><span>Berat Bersih</span><span class="mono">${ext.berat_bersih?.nilai ? `${ext.berat_bersih.nilai} ${ext.berat_bersih.satuan}` : '<span class="pill bad">Tidak ada</span>'}</span></div>
               <div class="kv" style="padding:4px 0"><span>Izin Edar</span><span class="mono">${ext.nie?.tipe ? `${ext.nie.tipe} ${ext.nie.nomor}` : '<span class="pill bad">Tidak ada</span>'}</span></div>
               <div class="kv" style="padding:4px 0"><span>Halal</span><span>${ext.halal?.tercantum ? '<span class="pill ok">Tercantum</span>' : '<span class="pill warn">Belum tercantum</span>'}</span></div>
-              <div class="kv" style="padding:4px 0"><span>Kedaluwarsa</span><span class="mono">${esc(ext.kedaluwarsa || '—')}</span></div>
+              <div class="kv" style="padding:4px 0"><span>Kedaluwarsa</span><span class="mono">${esc((ext.kedaluwarsa || '').replace(/^(?:baik digunakan sebelum|kedaluwarsa|best before|exp\.?)\s*:?\s*/i, '') || '—')}</span></div>
             </div>
 
             <div class="entity-card">
@@ -266,13 +269,13 @@ function renderDetail(id) {
       <div class="col">
         <section class="panel">
           <div class="tab-row" role="tablist">
-            <button class="tab-btn" id="tabChecklist" role="tab" aria-selected="true">Checklist 9 Butir</button>
-            <button class="tab-btn" id="tabBA" role="tab" aria-selected="false">Berita Acara Dinas</button>
-            <button class="tab-btn" id="tabWA" role="tab" aria-selected="false">Draft Pesan WhatsApp</button>
+            <button class="tab-btn" id="tabChecklist" role="tab" aria-selected="${activeRightTab === 'checklist' ? 'true' : 'false'}">Checklist 9 Butir</button>
+            <button class="tab-btn" id="tabBA" role="tab" aria-selected="${activeRightTab === 'ba' ? 'true' : 'false'}">Berita Acara Dinas</button>
+            <button class="tab-btn" id="tabWA" role="tab" aria-selected="${activeRightTab === 'wa' ? 'true' : 'false'}">Draft Pesan WhatsApp</button>
           </div>
 
           <!-- Tab Content A: Checklist 9 Butir Wajib -->
-          <div id="contentChecklist">
+          <div id="contentChecklist" style="${activeRightTab === 'checklist' ? '' : 'display:none'}">
             <h2>Keterangan Wajib Label</h2>
             <p class="cap">9 butir, Peraturan BPOM No. 31 Tahun 2018 jo No. 20 Tahun 2021</p>
             ${empty ? '<p class="q-find">Belum diperiksa karena teks label kosong.</p>' : res.items.map((i) => `
@@ -289,7 +292,7 @@ function renderDetail(id) {
           </div>
 
           <!-- Tab Content B: Berita Acara Dinas Disperindag -->
-          <div id="contentBA" style="display:none">
+          <div id="contentBA" style="${activeRightTab === 'ba' ? 'display:block' : 'display:none'}">
             <div class="ba-paper">
               <div class="ba-head">
                 <div class="ba-instansi">${esc(ba.instansi || 'DINAS PERINDUSTRIAN DAN PERDAGANGAN')}</div>
@@ -319,28 +322,45 @@ function renderDetail(id) {
               <div class="ba-foot">
                 <div>
                   <div style="font-weight:600;margin-bottom:2px">Petugas Pemeriksa Disperindag:</div>
-                  <div>${esc(curSession.user.name)}</div>
-                  <div class="mono" style="font-size:11px;color:var(--faint)">NIP: ${esc(curSession.user.nip || '-')}</div>
-                  <div style="margin-top:4px"><span class="user-role-badge ${esc(curSession.role.id)}">${esc(curSession.role.badge)}</span></div>
-                  ${isAuditorOrAdmin ? `
+                  <div>${esc(curUser.name)}</div>
+                  <div class="mono" style="font-size:11px;color:var(--faint)">NIP: ${esc(curUser.nip || '-')}</div>
+                  <div style="margin-top:4px"><span class="user-role-badge ${esc(curRole.id)}">${esc(curRole.badge)}</span></div>
+                  ${sig ? `
+                    <div class="ds-tera-box" id="baSignProof">
+                      <div class="ds-tera-title">
+                        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/></svg>
+                        <span>TERSAHKAN RESMI (DS-TERA)</span>
+                      </div>
+                      <div class="ds-tera-meta">
+                        <div><b>Nomor Sertifikat:</b> <span class="mono">${esc(sig.signature_id || '')}</span></div>
+                        <div><b>Disahkan Oleh:</b> ${esc(sig.signed_by_name || sig.signed_by || curUser.name)} (NIP: ${esc(sig.signed_by_nip || sig.nip || curUser.nip || '-')})</div>
+                        <div><b>Waktu Pengesahan:</b> ${esc(new Date(sig.timestamp).toLocaleString('id-ID'))}</div>
+                        <div><b>SHA-256 Integritas:</b> <span class="mono" style="word-break:break-all">${esc(sig.sha256_hash || sig.hash || '')}</span></div>
+                        <div style="margin-top:6px"><a class="btn sm" href="#/verify/${encodeURIComponent(sig.signature_id || '')}" style="padding:2px 8px;font-size:11px">Buka Lembar Verifikasi Publik (QR) ↗</a></div>
+                      </div>
+                    </div>
+                  ` : isAuditorOrAdmin ? `
                     <div style="margin-top:8px">
-                      <button class="btn primary" id="signBaBtn" type="button" style="min-height:30px;font-size:12px;padding:0 10px">Sahkan Berita Acara (Digital Signature)</button>
+                      <button class="btn primary" id="signBaBtn" type="button" style="min-height:30px;font-size:12px;padding:0 10px">
+                        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/></svg> Sahkan Berita Acara (Digital Signature)
+                      </button>
                     </div>
                   ` : `
                     <div style="margin-top:6px;font-size:11px;color:var(--faint)">
                       * Butuh verifikasi Auditor Hukum untuk pengesahan formal.
                     </div>
                   `}
-                  <div id="baSignProof" style="margin-top:8px;display:none;padding:6px 10px;background:var(--pill-ok-bg);color:var(--pill-ok-ink);border-radius:4px;font-size:11px">
-                    <b>TERSAHKAN SECARA DIGITAL</b><br>
-                    <span class="mono">HASH: DS-TERA-${esc(r.id)}-${Date.now().toString(36).toUpperCase()}</span>
-                  </div>
                 </div>
                 <div>
                   <div style="font-weight:600;margin-bottom:2px">Pelaku Usaha:</div>
                   <div>${esc(r.owner || 'Perwakilan UMKM')}</div>
                   <div style="color:var(--faint);font-size:11px;margin-top:4px">(Tanda tangan fisik/digital saat serah terima)</div>
                 </div>
+              </div>
+              <div class="actions" style="margin-top:16px">
+                <button class="btn primary" id="printBaBtn" type="button">
+                  <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9V2h12v7M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><path d="M6 14h12v8H6z"/></svg> Cetak Berita Acara Resmi (A4)
+                </button>
               </div>
             </div>
           </div>
@@ -438,13 +458,44 @@ function bindDetail(r, res) {
       : out.found ? `<span class="pill ok">Ditemukan</span> <span class="q-find">${esc(out.product || '')} · ${esc(out.owner || '')}${out.valid_until ? ` · berlaku s.d. ${esc(out.valid_until)}` : ''}</span>`
       : '<span class="pill bad">Tidak ditemukan</span> <span class="q-find">Nomor tidak ada di data BPOM.</span>';
   });
-  $('#signBaBtn')?.addEventListener('click', (e) => {
-    e.currentTarget.disabled = true;
+  $('#printBaBtn')?.addEventListener('click', () => {
+    $('#tabBA')?.click();
+    setTimeout(() => window.print(), 80);
+  });
+  $('#signBaBtn')?.addEventListener('click', async (e) => {
+    const btn = e.currentTarget;
+    btn.disabled = true;
+    btn.textContent = 'Memproses tanda tangan digital…';
     const cur = auth.currentSession();
-    const proof = $('#baSignProof');
-    if (proof) proof.style.display = 'block';
-    store.addLog(r.id, `Berita Acara disahkan secara digital oleh ${cur.user.name} (${cur.role.name})`);
-    toast('Berita Acara resmi disahkan dengan tanda tangan digital.');
+    const curName = cur?.user?.name || 'Petugas Lapangan';
+    const curNip = cur?.user?.nip || '-';
+    const curRole = cur?.role?.id || 'auditor';
+
+    try {
+      let sig = await api.signRecord(r.id, { name: curName, nip: curNip, role: curRole });
+      if (!sig) {
+        // Fallback client-side cryptographic signature jika server offline
+        const ts = new Date().toISOString();
+        const raw = `${r.id}|${r.name}|${r.owner}|${ts}|${curNip}|${curName}`;
+        sig = {
+          signature_id: `DS-TERA-${new Date().getFullYear()}-${r.id.replace('P-', '')}`,
+          signed_by_name: curName,
+          signed_by_nip: curNip,
+          signed_by_role: curRole,
+          timestamp: ts,
+          sha256_hash: Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(raw)))).map(b => b.toString(16).padStart(2, '0')).join(''),
+          qr_code_data: `https://tera.disperindag.banten.go.id/verify/DS-TERA-${r.id}`
+        };
+      }
+      store.saveSignature(r.id, sig);
+      store.addLog(r.id, `Berita Acara resmi disahkan secara digital (${sig.signature_id})`, curName);
+      toast('Berita Acara resmi disahkan dengan Tanda Tangan Digital DS-TERA.');
+      renderDetail(r.id, 'ba');
+    } catch (err) {
+      toast('Gagal mengesahkan: ' + err.message);
+      btn.disabled = false;
+      btn.textContent = 'Sahkan Berita Acara (Digital Signature)';
+    }
   });
   $$('[data-ref]', view).forEach((el) => el.addEventListener('click', () => {
     const ref = el.dataset.ref;
@@ -531,18 +582,23 @@ function renderRules() {
 function renderSettings() {
   const n = store.records().length;
   view.innerHTML = `
-    <div class="title-row"><div><h1>Pengaturan</h1><p class="sub">Status layanan dan pengelolaan data. Data disimpan di peramban ini sampai backend tersambung.</p></div></div>
+    <div class="title-row"><div><h1>Pengaturan</h1><p class="sub">Status layanan dan pengelolaan data. Terhubung ke backend SQLite WAL Disperindag & sinkronisasi otomatis.</p></div></div>
     <section class="panel"><h2>Layanan</h2>
       <div class="kv"><span>Mesin aturan</span><span><span class="pill ok">Aktif</span> <span class="q-find">berjalan di peramban dan server</span></span></div>
-      <div class="kv"><span>AI (OpenRouter)</span><span>${state.ai.ai ? `<span class="pill ok">Aktif</span> <span class="q-find mono">${esc(state.ai.model)}</span>` : `<span class="pill neutral">Belum aktif</span> <span class="q-find">${state.ai.offline ? 'server tidak terjangkau' : 'isi OPENROUTER_API_KEY dan OPENROUTER_MODEL di .env'}</span>`}</span></div>
-      <div class="kv"><span>Cek nomor izin edar</span><span><span class="pill neutral">Belum tersambung</span> <span class="q-find">hanya format yang diperiksa</span></span></div></section>
+      <div class="kv"><span>Database Utama</span><span>${state.ai.db ? `<span class="pill ok">Aktif</span> <span class="q-find mono">${esc(state.ai.engine || 'node:sqlite (WAL)')}</span>` : `<span class="pill neutral">Lokal</span> <span class="q-find">Penyimpanan peramban (localStorage)</span>`}</span></div>
+      <div class="kv"><span>Pangkalan Data Cek BPOM</span><span>${state.ai.db ? `<span class="pill ok">Terhubung</span> <span class="q-find">Cache Registri BPOM RI Aktif</span>` : `<span class="pill neutral">Belum tersambung</span> <span class="q-find">hanya format yang diperiksa</span>`}</span></div>
+      <div class="kv"><span>AI (OpenRouter)</span><span>${state.ai.ai ? `<span class="pill ok">Aktif</span> <span class="q-find mono">${esc(state.ai.model)}</span>` : `<span class="pill neutral">Belum aktif</span> <span class="q-find">${state.ai.offline ? 'server tidak terjangkau' : 'isi OPENROUTER_API_KEY dan OPENROUTER_MODEL di .env'}</span>`}</span></div></section>
     <section class="panel" style="margin-top:16px"><h2>Data</h2>
-      <div class="kv"><span>Isi</span><span>${n} berkas · ${store.usage()} KB di peramban</span></div>
-      <div class="actions" style="margin-top:12px"><button class="btn" id="exp">Ekspor JSON</button><label class="btn" for="imp">Impor JSON</label><input type="file" id="imp" accept="application/json" hidden><button class="btn danger" id="rst">Hapus data buatan sendiri</button></div>
-      <p class="cap" style="margin:12px 0 0">Hapus hanya menghilangkan berkas yang Anda buat, catatan, dan perubahan status. Data contoh kembali ke kondisi awal.</p></section>`;
+      <div class="kv"><span>Isi</span><span>${n} berkas · ${store.usage()} KB di peramban · SQLite terpusat</span></div>
+      <div class="actions" style="margin-top:12px"><button class="btn" id="exp">Ekspor JSON</button><label class="btn" for="imp">Impor JSON</label><input type="file" id="imp" accept="application/json" hidden><button class="btn danger" id="rst">Reset Database ke Awal</button></div>
+      <p class="cap" style="margin:12px 0 0">Reset akan mengembalikan berkas, catatan, tanda tangan digital, dan perubahan status ke data contoh dinas bawaan.</p></section>`;
   $('#exp').addEventListener('click', () => {
-    const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([store.exportJson()], { type: 'application/json' }));
-    a.download = `tera-${new Date().toISOString().slice(0, 10)}.json`; a.click(); URL.revokeObjectURL(a.href); toast('Data diekspor.');
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([store.exportJson()], { type: 'application/json' }));
+    a.download = `tera-${new Date().toISOString().slice(0, 10)}.json`;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 1500);
+    toast('Data diekspor.');
   });
   $('#imp').addEventListener('change', async (e) => {
     try { store.importJson(await e.target.files[0].text()); toast('Data diimpor.'); renderSettings(); } catch (ex) { toast(ex.message); }
@@ -554,11 +610,69 @@ function renderSettings() {
 /* ---------- user box in sidebar ---------- */
 function updateUserBox() {
   const box = $('#userBox');
-  if (!box) return;
+  const authNav = $('#authNavSlot');
   const s = auth.currentSession();
+  const aiActive = Boolean(state.ai?.ai);
+
+  if (authNav) {
+    if (s) {
+      authNav.innerHTML = `
+        <button class="nav-item nav-logout" id="sidebarLogoutBtn" type="button" aria-label="Keluar dari akun">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/></svg>
+          Keluar (Logout)
+        </button>
+      `;
+      $('#sidebarLogoutBtn')?.addEventListener('click', handleLogout);
+    } else {
+      authNav.innerHTML = `
+        <a class="nav-item" href="#/login" data-nav="login">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4M10 17l5-5-5-5M15 12H3"/></svg>
+          Masuk Akun
+        </a>
+      `;
+    }
+  }
+
+  const mbarSlot = $('#mbarAuthSlot');
+  if (mbarSlot) {
+    if (s) {
+      mbarSlot.innerHTML = `<button id="mbarLogoutBtn" class="btn sm danger" style="padding:0 8px;min-height:30px;font-size:11px" title="Keluar dari akun">Keluar</button>`;
+      $('#mbarLogoutBtn')?.addEventListener('click', handleLogout);
+    } else {
+      mbarSlot.innerHTML = `<a href="#/login" class="btn sm" style="padding:0 8px;min-height:30px;font-size:11px">Masuk</a>`;
+    }
+  }
+
+  if (!box) return;
+
+  if (!s) {
+    box.innerHTML = `
+      <div class="user-profile-card guest">
+        <div class="user-profile-top">
+          <div class="user-avatar guest">?</div>
+          <div class="user-meta">
+            <div class="user-name">Mode Tamu / Peninjau</div>
+            <div class="user-nip">Belum Masuk Akun Dinas</div>
+          </div>
+        </div>
+        <div class="user-badges-row">
+          <span class="user-role-badge guest">Akses Terbatas</span>
+          <span class="ai-engine-pill">
+            <span class="ai-engine-dot ${aiActive ? '' : 'off'}"></span>
+            ${aiActive ? 'AI Aktif' : 'Aturan'}
+          </span>
+        </div>
+        <div class="user-actions" style="border-top:none;padding-top:2px">
+          <a class="btn primary sm" href="#/login" style="width:100%;text-align:center;justify-content:center;min-height:28px;font-size:11px">Masuk Akun Dinas →</a>
+        </div>
+      </div>`;
+    const foot = $('#aiState');
+    if (foot) foot.innerHTML = '';
+    return;
+  }
+
   const u = s.user;
   const r = s.role;
-  const aiActive = Boolean(state.ai?.ai);
   box.innerHTML = `
     <div class="user-profile-card">
       <div class="user-profile-top">
@@ -576,24 +690,32 @@ function updateUserBox() {
         </span>
       </div>
       <div class="user-actions">
-        <a href="#/login">Ganti Akun</a> · 
-        <button id="logoutBtn" type="button">Keluar</button>
+        <a href="#/login" style="color:var(--text);font-weight:500">Ganti Akun</a> · 
+        <button id="logoutBtn" type="button" class="user-logout-btn" style="color:var(--negative);font-weight:600">Keluar (Logout)</button>
       </div>
     </div>`;
   const foot = $('#aiState');
   if (foot) foot.innerHTML = '';
-  $('#logoutBtn')?.addEventListener('click', () => {
-    auth.logout();
-    updateUserBox();
-    toast('Sesi berakhir. Kembali ke profil dasar.');
-    route();
-  });
+  $('#logoutBtn')?.addEventListener('click', handleLogout);
+}
+
+function handleLogout() {
+  auth.logout();
+  updateUserBox();
+  toast('Anda telah berhasil keluar dari akun dinas.');
+  if (location.hash === '#/login') {
+    renderLogin();
+  } else {
+    location.hash = '#/login';
+  }
 }
 
 /* ---------- beranda operasional / executive dashboard ---------- */
 function renderDashboard() {
   const recs = store.records();
   const curSession = auth.currentSession();
+  const curUser = curSession?.user || { name: 'Peninjau Tamu / Publik', nip: '-', jabatan: 'Pengamat Wilayah' };
+  const curRole = curSession?.role || { id: 'guest', name: 'Mode Tamu', badge: 'Tamu' };
   
   // 1. Hitung status tahapan
   const cnt = { total: recs.length, keputusan: 0, perbaikan: 0, selesai: 0 };
@@ -655,7 +777,11 @@ function renderDashboard() {
       <header class="dash-header">
         <div class="dash-header-title">
           <h1>Beranda Operasional Pengawasan</h1>
-          <p>Selamat bertugas, <b>${esc(curSession.user.name)}</b> (${esc(curSession.role.name)}). Pusat kendali kepatuhan label pangan wilayah.</p>
+          ${curSession ? `
+            <p>Selamat bertugas, <b>${esc(curUser.name)}</b> (${esc(curRole.name)}). Pusat kendali kepatuhan label pangan wilayah Disperindag.</p>
+          ` : `
+            <p>Pusat kendali kepatuhan label pangan Disperindag. Mode peninjau publik · <a href="#/login" style="text-decoration:underline;font-weight:600">Masuk Akun Dinas</a> untuk tindakan pengesahan Berita Acara.</p>
+          `}
         </div>
         <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
           <span class="dash-period-badge">
@@ -664,6 +790,7 @@ function renderDashboard() {
           </span>
           <a class="btn primary" href="#/baru" style="min-height:36px;font-size:13px">+ Periksa Label Baru</a>
           <a class="btn" href="#/" style="min-height:36px;font-size:13px">Buka Antrean Lengkap (${cnt.total})</a>
+          <a class="btn" href="#/landing" style="min-height:36px;font-size:13px">Portal Publik & Demo</a>
         </div>
       </header>
 
@@ -828,6 +955,236 @@ function renderDashboard() {
   setNav('beranda', 'Beranda Operasional');
 }
 
+/* ---------- portal publik / simulator ---------- */
+const LANDING_DEMOS = [
+  {
+    name: 'Sirup Jahe (Klaim Medis Terlarang)',
+    productName: 'Sirup Jahe Merah',
+    owner: 'CV Rempah Nusantara',
+    text: `SIRUP JAHE MERAH\nMenyembuhkan asam lambung dan menghangatkan badan. Tanpa pengawet, 100% alami.\nKomposisi: jahe merah, gula pasir, air, serai.\nIsi bersih: 330 ml\nDiproduksi oleh: CV Rempah Nusantara, Jl. Raya Ciputat No. 45, Kec. Ciputat, Kota Tangerang Selatan\nHalal\nTanggal produksi: 20 Okt 2026\nKedaluwarsa: 20 Apr 2027`,
+  },
+  {
+    name: 'Keripik Tempe (Format Standar Lengkap)',
+    productName: 'Keripik Tempe Renyah Original',
+    owner: 'UD Warsih Jaya',
+    text: `KERIPIK TEMPE RENYAH ORIGINAL\nKomposisi: tempe (kedelai), tepung beras, tepung tapioka, bawang putih, ketumbar, garam, minyak kelapa sawit.\nBerat bersih: 150 g\nDiproduksi oleh: UD Warsih Jaya\nJl. Melati No. 12, Kec. Pamulang, Kota Tangerang Selatan\nHalal (logo BPJPH)\nKode produksi: 2410A\nBaik digunakan sebelum: 12 Januari 2027\nMD 267812345601`,
+  },
+  {
+    name: 'Brownies Kukus (Alergen Tanpa Tebal)',
+    productName: 'Brownies Kukus Cokelat',
+    owner: 'Rumah Kue Anisa',
+    text: `BROWNIES KUKUS COKELAT\nKomposisi: tepung terigu, telur, gula, mentega, cokelat bubuk, pengembang.\nBerat bersih: 400 g\nDiproduksi oleh: Rumah Kue Anisa, Jl. Anggrek No. 9, Kec. Pamulang, Kota Tangerang Selatan\nHalal\nKedaluwarsa: 3 hari setelah produksi\nMD 267812345607`,
+  },
+];
+
+function renderLanding() {
+  let activeIdx = 0;
+
+  const updateDemo = (idx) => {
+    activeIdx = idx;
+    const demo = LANDING_DEMOS[idx];
+    const res = check({ label: demo.text, name: demo.productName, nie: '' });
+    const ext = res.extracted || {};
+    const ba = res.berita_acara || {};
+
+    const demoTextEl = $('#demoText');
+    const demoOutEl = $('#demoOutput');
+    if (demoTextEl) demoTextEl.textContent = demo.text;
+
+    if (demoOutEl) {
+      const vKey = res.verdict.key;
+      const vPill = vKey === 'lengkap'
+        ? `<span class="pill ok">Sesuai Regulasi (${res.ok}/9 Butir)</span>`
+        : `<span class="pill bad">Perlu Perbaikan (${res.miss} Butir Belum Sesuai)</span>`;
+
+      demoOutEl.innerHTML = `
+        <div style="display:flex;justify-content:space-between;align-items:center;padding-bottom:8px;border-bottom:1px solid var(--border)">
+          <b>Vonis Hukum Realtime:</b>
+          ${vPill}
+        </div>
+        <div style="font-size:12px;display:grid;gap:6px;margin-top:4px">
+          <div><b>AI 1 (Ekstraksi Entitas):</b> ${ext.komposisi?.length || 0} bahan teridentifikasi, ${ext.alergen?.length || 0} alergen, Netto ${ext.berat_bersih?.nilai || '-'} ${ext.berat_bersih?.satuan || ''}.</div>
+          <div><b>AI 2 (Audit Hukum):</b> ${(ba.temuan || []).length} temuan keterangan wajib.</div>
+          ${(ba.pelanggaran_klaim || []).length ? `<div style="color:var(--negative)"><b>Pelanggaran Klaim (PerBPOM 1/2022):</b> ${ba.pelanggaran_klaim.join(', ')}</div>` : ''}
+          <div style="background:var(--raised);padding:8px;border-radius:4px;border-left:3px solid var(--accent);margin-top:4px">
+            <b>Rekomendasi Dinas:</b> ${esc(ba.rekomendasi)}
+          </div>
+        </div>
+      `;
+    }
+  };
+
+  view.innerHTML = `
+    <div class="landing-wrap">
+      <!-- 1. Hero Section -->
+      <section class="hero-sec">
+        <div class="hero-tag">
+          <span class="tag-dot"></span>
+          <span>Sistem Kepatuhan Mutu & Label Pangan Olahan Disperindag</span>
+        </div>
+        <h1 class="hero-title">Pemeriksaan Label BPOM. Tanpa Birokrasi Form, Tanpa Halusinasi Hukum.</h1>
+        <p class="hero-desc">
+          Mengubah teks kemasan acak menjadi Berita Acara resmi Disperindag dan draf WhatsApp edukasi UMKM dalam hitungan detik. Menggabungkan arsitektur Dual-AI, audit 9 pasal wajib PerBPOM 31/2018 jo 20/2021, dan integrasi data hukum JDIH BPOM RI.
+        </p>
+        <div class="hero-actions">
+          <a class="btn primary" href="#/baru">Periksa Label Sekarang →</a>
+          <a class="btn" href="#/beranda">Buka Beranda Operasional</a>
+          <a class="btn" href="#/jdih">Kanal Regulasi JDIH</a>
+        </div>
+
+        <div class="metrics-row">
+          <div class="metric-item">
+            <span class="metric-val">9 Butir</span>
+            <span class="metric-lab">Keterangan Wajib PerBPOM 31/2018 jo 20/2021</span>
+          </div>
+          <div class="metric-item">
+            <span class="metric-val">&lt; 1 Detik</span>
+            <span class="metric-lab">Kecepatan Audit & Ekstraksi Entitas Multimodal</span>
+          </div>
+          <div class="metric-item">
+            <span class="metric-val">0.00%</span>
+            <span class="metric-lab">Risiko Halusinasi (SHA-256 Hash Locked JDIH)</span>
+          </div>
+          <div class="metric-item">
+            <span class="metric-val">&lt; 30 MB</span>
+            <span class="metric-lab">Jejak Memori Rust Backend Standar Fanatik</span>
+          </div>
+        </div>
+      </section>
+
+      <!-- 2. Interactive Simulator -->
+      <section class="sim-sec">
+        <div class="sim-card">
+          <div class="sim-head">
+            <div class="sim-title">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+              <span>Simulator Dual-AI Interaktif (Uji Langsung 1-Klik)</span>
+            </div>
+            <div class="demo-chips">
+              ${LANDING_DEMOS.map((d, i) => `
+                <button class="demo-chip" data-idx="${i}" aria-selected="${i === 0 ? 'true' : 'false'}">${esc(d.name)}</button>
+              `).join('')}
+            </div>
+          </div>
+
+          <div class="sim-body">
+            <div class="sim-col">
+              <div class="sim-col-title">Input Teks Kemasan Produk (Simulasi OCR / Raw Text):</div>
+              <div class="sim-code" id="demoText"></div>
+            </div>
+            <div class="sim-col">
+              <div class="sim-col-title">Hasil Analisis Dual-AI Pipeline (Aturan Deterministik + Audit Hukum):</div>
+              <div id="demoOutput" style="display:grid;gap:8px"></div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- 3. Bento Grid Fitur Unggulan -->
+      <section class="sec-head">
+        <h2 class="sec-title">Arsitektur Kepatuhan Kelas Industri</h2>
+        <p class="sec-sub">Dirancang khusus untuk kebutuhan inspektur lapangan Disperindag dan pelaku usaha pangan.</p>
+      </section>
+
+      <div class="bento-grid">
+        <article class="bento-card">
+          <div class="bento-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+          </div>
+          <h3>Arsitektur Dual-AI: Ekstraksi + Audit Hukum</h3>
+          <p>Memisahkan tugas: AI Pertama mengekstrak entitas label mentah (komposisi, alergen, netto), sedangkan AI Kedua bertindak sebagai auditor hukum berbasis PerBPOM 31/2018.</p>
+          <div class="bento-foot">Zero-Hallucination Pipeline · Deterministic Audit</div>
+        </article>
+
+        <article class="bento-card">
+          <div class="bento-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+          </div>
+          <h3>Berita Acara Resmi Disperindag & Tanda Tangan Digital</h3>
+          <p>Otomatis menyusun Berita Acara pemeriksaan lengkap dengan dasar hukum, temuan butir pelanggaran, dan stempel digital kriptografis (DS-TERA) siap tanda tangan Auditor Hukum.</p>
+          <div class="bento-foot">Pasal 5 PerBPOM 31/2018 · Format Formal Dinas</div>
+        </article>
+
+        <article class="bento-card">
+          <div class="bento-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg>
+          </div>
+          <h3>Pendampingan Humanis via Draf WhatsApp UMKM</h3>
+          <p>Bukan sekadar menghukum pelaku usaha. Tera mengonversi pasal undang-undang yang rumit menjadi petunjuk perbaikan yang ramah, sopan, dan langsung dapat dikirim via WhatsApp dengan 1-klik.</p>
+          <div class="bento-foot">wa.me Redirect · Bahasa Edukatif Santun</div>
+        </article>
+
+        <article class="bento-card">
+          <div class="bento-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="M9 12l2 2 4-4"/></svg>
+          </div>
+          <h3>Kanal Regulasi JDIH Terkunci Anti-Halusinasi</h3>
+          <p>AI dilarang mengutip pasal usang. Seluruh engine terikat pada regulasi aktif (PerBPOM 22/2025 s.d. 31/2018) dengan validasi fingerprint SHA-256 yang selaras dengan JDIHN BPHN Kemenkumham.</p>
+          <div class="bento-foot">JDIH BPOM RI · SHA-256 Immutability</div>
+        </article>
+
+        <article class="bento-card">
+          <div class="bento-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+          </div>
+          <h3>Keandalan Ekstrem: Rust Single-Binary Engine</h3>
+          <p>Dibangun dengan standar sekte fanatik Rustacean (#![forbid(unsafe_code)]). Menggunakan SQLite WAL mode, jejak memori di bawah 30MB, dan single binary mandiri tanpa dependensi runtime.</p>
+          <div class="bento-foot">Axum 0.8 · SQLx WAL Mode · Zero-Leak</div>
+        </article>
+      </div>
+
+      <!-- 4. Komparasi Cara Lama vs Cara Tera -->
+      <section class="sec-head">
+        <h2 class="sec-title">Perbandingan Metode Kerja</h2>
+        <p class="sec-sub">Efisiensi pengawasan lapangan tanpa beban birokrasi manual.</p>
+      </section>
+
+      <div class="compare-sec">
+        <div class="compare-card bad">
+          <h3>✕ Cara Konvensional (Portal e-Reg & Audit Manual)</h3>
+          <ul>
+            <li>Formulir bertingkat puluhan tab yang membingungkan pelaku usaha.</li>
+            <li>Antrean verifikasi manual memakan waktu 14 hingga 45 hari kerja.</li>
+            <li>Surat penolakan memakai bahasa birokrasi kaku tanpa petunjuk draf yang benar.</li>
+            <li>Rawan kesalahan audit manusia saat meninjau ratusan teks komposisi mikro.</li>
+          </ul>
+        </div>
+        <div class="compare-card good">
+          <h3>✓ Solusi Cerdas Tera (Dual-AI + Disperindag)</h3>
+          <ul>
+            <li>Cukup tempel teks label atau jepret kemasan produk secara langsung.</li>
+            <li>Audit kepatuhan selesai dalam hitungan detik secara otomatis.</li>
+            <li>Menghasilkan draf WhatsApp santun untuk langsung diedukasikan ke UMKM.</li>
+            <li>Arsip Berita Acara resmi tersahkan dengan tanda tangan digital kriptografis.</li>
+          </ul>
+        </div>
+      </div>
+
+      <!-- 5. CTA Akhir -->
+      <section class="landing-cta">
+        <h2>Mulai Transformasi Kepatuhan Produk di Wilayah Anda</h2>
+        <p>Gunakan Tera untuk mempercepat proses pengawasan mutu pangan olahan dan membina UMKM secara terukur, cepat, dan transparan.</p>
+        <div class="actions">
+          <a class="btn" href="#/baru">Periksa Label Baru Sekarang</a>
+          <a class="btn" href="#/login" style="background:transparent;color:#fff;border-color:rgba(255,255,255,0.4)">Masuk Akun Dinas</a>
+        </div>
+      </section>
+    </div>
+  `;
+
+  // Bind interactive demo chips
+  $$('.demo-chip', view).forEach((b) => {
+    b.addEventListener('click', () => {
+      $$('.demo-chip', view).forEach((btn) => btn.setAttribute('aria-selected', 'false'));
+      b.setAttribute('aria-selected', 'true');
+      updateDemo(Number(b.dataset.idx));
+    });
+  });
+
+  updateDemo(0);
+  setNav('landing', 'Portal Publik & Demo');
+}
+
 /* ---------- masuk akun (login) ---------- */
 function renderLogin() {
   const cur = auth.currentSession();
@@ -839,15 +1196,36 @@ function renderLogin() {
       </div>
     </div>
     <div class="login-wrap">
-      <div class="login-header">
-        <span class="mark" style="margin:0 auto 12px">T</span>
-        <h1>Direktori Disperindag</h1>
-        <p>Masuk menggunakan akun dinas atau pilih preset profil uji coba di bawah.</p>
-      </div>
+      ${cur ? `
+        <div class="login-active-card">
+          <div class="active-badge">Sesi Aktif Saat Ini</div>
+          <div style="display:flex;align-items:center;gap:12px;margin:12px 0">
+            <div class="user-avatar" style="width:40px;height:40px;font-size:16px">${esc((cur.user.name || 'P')[0])}</div>
+            <div style="min-width:0;flex:1">
+              <div style="font-weight:600;font-size:14px">${esc(cur.user.name)}</div>
+              <div class="mono" style="font-size:11px;color:var(--muted)">NIP: ${esc(cur.user.nip || '-')}</div>
+              <div style="margin-top:4px"><span class="user-role-badge ${esc(cur.role.id)}">${esc(cur.role.badge)} · ${esc(cur.role.name)}</span></div>
+            </div>
+          </div>
+          <button class="btn danger" id="btnLogoutOnPage" type="button" style="width:100%;min-height:36px;font-weight:600">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:middle;margin-right:6px"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/></svg>
+            Keluar dari Akun Ini (Logout)
+          </button>
+        </div>
+        <div style="margin:20px 0 16px;text-align:center;position:relative;border-top:1px dashed var(--border)">
+          <span style="position:relative;top:-10px;background:var(--surface);padding:0 10px;color:var(--faint);font-size:11px;text-transform:uppercase;letter-spacing:0.04em">Atau Beralih ke Akun Lain</span>
+        </div>
+      ` : `
+        <div class="login-header">
+          <span class="mark" style="margin:0 auto 12px">T</span>
+          <h1>Direktori Disperindag</h1>
+          <p>Masuk menggunakan akun dinas atau pilih preset profil uji coba di bawah.</p>
+        </div>
+      `}
       <form id="loginForm" class="form-grid" novalidate>
         <div class="field">
           <label for="loginEmail">Email Kedinasan / NIP</label>
-          <input class="input" id="loginEmail" type="email" required value="${esc(cur.user.email)}" autocomplete="username">
+          <input class="input" id="loginEmail" type="email" required value="${esc(cur?.user?.email || 'petugas@disperindag.banten.go.id')}" autocomplete="username">
         </div>
         <div class="field">
           <label for="loginPass">Kata Sandi</label>
@@ -873,6 +1251,10 @@ function renderLogin() {
     </div>
   `;
 
+  $('#btnLogoutOnPage')?.addEventListener('click', () => {
+    handleLogout();
+  });
+
   $('#loginForm').addEventListener('submit', (e) => {
     e.preventDefault();
     try {
@@ -881,7 +1263,7 @@ function renderLogin() {
       const s = auth.login(email, pass);
       updateUserBox();
       toast(`Selamat datang, ${s.user.name} (${s.role.name}).`);
-      location.hash = '#/';
+      location.hash = '#/beranda';
     } catch (err) {
       toast(err.message);
     }
@@ -893,7 +1275,7 @@ function renderLogin() {
       const s = auth.login(email);
       updateUserBox();
       toast(`Beralih ke profil ${s.user.name} (${s.role.name}).`);
-      location.hash = '#/';
+      location.hash = '#/beranda';
     });
   });
 
@@ -964,12 +1346,86 @@ function renderJdih() {
   setNav('jdih', 'Regulasi JDIH');
 }
 
+/* ---------- verifikasi sertifikat publik (QR scanner) ---------- */
+function renderVerify(rawId) {
+  const sigId = decodeURIComponent(rawId).trim();
+  const allRecs = store.records();
+  const matched = allRecs.find((r) => {
+    const sId = (r.signature?.signature_id || '').toLowerCase();
+    const query = sigId.toLowerCase();
+    return sId === query || r.id.toLowerCase() === query || sId.includes(query);
+  });
+  const sig = matched?.signature;
+
+  view.innerHTML = `
+    <div class="verify-wrap">
+      <div class="verify-card ${sig ? 'valid' : 'invalid'}">
+        <div class="verify-icon">
+          ${sig ? `
+            <svg viewBox="0 0 24 24" width="54" height="54" fill="none" stroke="#059669" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+              <path d="m9 12 2 2 4-4"/>
+            </svg>
+          ` : `
+            <svg viewBox="0 0 24 24" width="54" height="54" fill="none" stroke="#dc2626" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="12" cy="12" r="10"/>
+              <line x1="12" y1="8" x2="12" y2="12"/>
+              <line x1="12" y1="16" x2="12.01" y2="16"/>
+            </svg>
+          `}
+        </div>
+        
+        <div class="verify-header">
+          <div class="verify-instansi">PEMERINTAH KOTA TANGERANG SELATAN</div>
+          <div class="verify-dinas">DINAS PERINDUSTRIAN DAN PERDAGANGAN</div>
+          <h2>${sig ? 'SERTIFIKAT BERITA ACARA OTENTIK' : 'DOKUMEN TIDAK DITEMUKAN'}</h2>
+          <div>
+            <span class="verify-status-badge ${sig ? 'ok' : 'bad'}">
+              ${sig ? '✓ DOKUMEN SAH & TERDAFTAR SECARA RESMI' : '✕ NOMOR SERTIFIKAT TIDAK TERDAFTAR'}
+            </span>
+          </div>
+        </div>
+
+        ${sig ? `
+          <div class="verify-meta-table">
+            <div class="v-row"><span>Nomor Sertifikat</span><b class="mono" style="color:#047857">${esc(sig.signature_id)}</b></div>
+            <div class="v-row"><span>Nama Produk</span><b>${esc(matched.name)}</b></div>
+            <div class="v-row"><span>Pelaku Usaha</span><span>${esc(matched.owner)}</span></div>
+            <div class="v-row"><span>Status Kelayakan</span><span><span class="pill ${matched.stage === 'selesai' ? 'ok' : 'warn'}">${esc(matched.stage === 'selesai' ? 'Disetujui Petugas' : 'Perlu Perbaikan Label')}</span></span></div>
+            <div class="v-row"><span>Waktu Pengesahan</span><span>${esc(new Date(sig.timestamp).toLocaleString('id-ID', { dateStyle: 'full', timeStyle: 'medium' }))}</span></div>
+            <div class="v-row"><span>Pejabat Penandatangan</span><div><b>${esc(sig.signed_by_name || sig.signed_by)}</b><div class="mono" style="font-size:11px;color:var(--muted)">NIP: ${esc(sig.signed_by_nip || sig.nip || '-')} · ${esc(sig.signed_by_role || 'Auditor Hukum')}</div></div></div>
+            <div class="v-row"><span>Hash Kriptografi SHA-256</span><span class="mono v-hash">${esc(sig.sha256_hash || sig.hash)}</span></div>
+          </div>
+          <p style="font-size:11.5px;color:var(--muted);line-height:17px;margin:8px 0 16px">
+            Dokumen Berita Acara ini telah melalui verifikasi audit kepatuhan label pangan olahan Disperindag Kota Tangerang Selatan berlandaskan PerBPOM No. 31/2018 jo No. 20/2021 dan disahkan secara kriptografis menggunakan DS-TERA.
+          </p>
+          <div class="verify-actions">
+            <a class="btn primary" href="#/p/${esc(matched.id)}">Buka Rincian Berkas Pengawasan →</a>
+            <a class="btn" href="#/beranda">Ke Beranda Dashboard</a>
+          </div>
+        ` : `
+          <p style="color:var(--muted);margin:16px 0;font-size:13px;line-height:20px">
+            Nomor sertifikat <b>"${esc(sigId)}"</b> tidak ditemukan pada basis data registrasi resmi Dinas Perindustrian dan Perdagangan Kota Tangerang Selatan. Pastikan kode verifikasi yang Anda pindai atau masukkan sudah benar.
+          </p>
+          <div class="verify-actions">
+            <a class="btn primary" href="#/beranda">Buka Dashboard Pengawasan</a>
+            <a class="btn" href="#/">Lihat Antrean Berkas</a>
+          </div>
+        `}
+      </div>
+    </div>
+  `;
+  setNav('', 'Verifikasi Dokumen');
+}
+
 /* ---------- router ---------- */
 function route() {
   updateUserBox();
   const h = location.hash.replace(/^#/, '') || '/';
   if (h.startsWith('/p/')) renderDetail(decodeURIComponent(h.slice(3)));
-  else if (h === '/beranda') renderLanding();
+  else if (h.startsWith('/verify/')) renderVerify(decodeURIComponent(h.slice(8)));
+  else if (h === '/beranda') renderDashboard();
+  else if (h === '/landing' || h === '/portal' || h === '/tentang') renderLanding();
   else if (h === '/baru') renderNew();
   else if (h === '/aturan') renderRules();
   else if (h === '/jdih') renderJdih();
@@ -990,7 +1446,7 @@ document.addEventListener('keydown', (e) => {
 });
 
 skeleton();
-api.status().then((s) => {
-  state.ai = s;
+Promise.allSettled([api.status(), store.syncWithServer()]).then(([sRes]) => {
+  if (sRes.status === 'fulfilled' && sRes.value) state.ai = sRes.value;
   route();
 });

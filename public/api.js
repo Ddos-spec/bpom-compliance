@@ -36,6 +36,73 @@ export async function lookupNie(nie) {
   catch { return { ok: false }; }
 }
 
+// REST endpoints untuk records & digital signatures
+export async function fetchRecords() {
+  try {
+    const res = await j('/api/records');
+    return res?.data || null;
+  } catch {
+    return null;
+  }
+}
+
+export async function fetchRecord(id) {
+  try {
+    const res = await j(`/api/records/${encodeURIComponent(id)}`);
+    return res?.data || null;
+  } catch {
+    return null;
+  }
+}
+
+export async function createRecord(payload) {
+  try {
+    const res = await j('/api/records', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    return res?.data || null;
+  } catch {
+    return null;
+  }
+}
+
+export async function patchRecord(id, updates) {
+  try {
+    const res = await j(`/api/records/${encodeURIComponent(id)}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(updates)
+    });
+    return res?.data || null;
+  } catch {
+    return null;
+  }
+}
+
+export async function signRecord(id, officer) {
+  try {
+    const res = await j(`/api/records/${encodeURIComponent(id)}/sign`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ officer })
+    });
+    return res?.signature || null;
+  } catch {
+    return null;
+  }
+}
+
+export async function resetServerDb() {
+  try {
+    const res = await j('/api/reset', { method: 'POST' });
+    return res?.ok || false;
+  } catch {
+    return false;
+  }
+}
+
 // Perkecil foto ke ~1000px sisi terpanjang agar muat di localStorage / dikirim ke AI.
 export function shrinkImage(file, max = 1000, quality = 0.78) {
   return new Promise((resolve, reject) => {

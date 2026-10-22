@@ -1,6 +1,10 @@
 node_modules/
 .env
+.env.local
 _refs/
 .taste-skill/
 .e2e/
 .vercel
+data/tera.db*
+data/images/*
+!data/images/.gitkeep
