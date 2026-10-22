@@ -12,7 +12,7 @@ const ok = (name, cond, extra = '') => { results.push([cond ? 'PASS' : 'FAIL', n
 (async () => {
   const browser = await chromium.launch({ headless: true });
   for (const [label, vp] of [['desktop', { width: 1440, height: 900 }], ['mobile', { width: 390, height: 844 }]]) {
-    const ctx = await browser.newContext({ viewport: vp, acceptDownloads: true });
+    const ctx = await browser.newContext({ viewport: vp, acceptDownloads: true, reducedMotion: 'reduce' });
     const page = await ctx.newPage();
     const errs = [];
     page.on('console', (m) => { if (m.type() === 'error') errs.push(m.text()); });
@@ -39,6 +39,7 @@ const ok = (name, cond, extra = '') => { results.push([cond ? 'PASS' : 'FAIL', n
     await page.locator('.ev[data-ref="bahan"]').click();
     ok(T('klik bukti menyorot teks label'), (await page.locator('#labelText mark.on').count()) === 1);
     ok(T('detail: panel NIE'), (await page.locator('#niePanel').count()) === 1);
+    await page.waitForTimeout(200);
     await shot('2-detail');
     await page.click('#nieBtn');
     await page.waitForSelector('#nieOut .q-find');
@@ -120,6 +121,16 @@ const ok = (name, cond, extra = '') => { results.push([cond ? 'PASS' : 'FAIL', n
     ok(T('ekspor JSON terunduh'), /^tera-.*\.json$/.test(dl.suggestedFilename()));
     await page.click('#rst');
     await page.waitForTimeout(200);
+    // beranda / landing page
+    await page.goto(BASE + '#/beranda');
+    await page.waitForSelector('.hero-title');
+    await page.waitForTimeout(400);
+    ok(T('landing: render hero'), (await page.locator('.hero-title').count()) === 1);
+    ok(T('landing: 4 bento cards'), (await page.locator('.bento-card').count()) === 4);
+    await shot('10-landing');
+    await page.click('.demo-chip[data-idx="1"]');
+    await page.waitForTimeout(200);
+    ok(T('landing: simulator switch sampel'), /KERIPIK TEMPE/i.test(await page.locator('#demoText').innerText()));
     await page.goto(BASE);
     ok(T('reset -> data awal kembali (4 perlu keputusan)'), (await page.locator('.q-row').count()) === 4);
     // Audit Estetika Visual Geometri (Zero Awkward Text Wrapping & Overlap)

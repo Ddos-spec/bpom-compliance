@@ -1,0 +1,423 @@
+/* ==============================================================================
+   TERA LANDING PAGE STYLES (Awwwards Gov-Tech Standard)
+   Kiblat: Taste-skill framed-sheet, IBM Plex Editorial, Zero AI-Slop
+   ============================================================================== */
+
+.landing-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 48px;
+  max-width: 1080px;
+  width: 100%;
+  margin: 0 auto;
+  padding: 8px 0 32px;
+  box-sizing: border-box;
+}
+
+/* 1. Hero Section */
+.hero-sec {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  padding-bottom: 32px;
+  border-bottom: 1px solid var(--border);
+}
+
+.hero-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--accent-pale);
+  color: var(--accent);
+  padding: 4px 12px;
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: .02em;
+  width: fit-content;
+  border: 1px solid rgba(15, 107, 87, 0.2);
+}
+
+.hero-tag .tag-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--accent);
+}
+
+.hero-title {
+  font-size: clamp(28px, 4.5vw, 42px);
+  line-height: 1.15;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  color: var(--text);
+  max-width: 24ch;
+}
+
+.hero-desc {
+  font-size: clamp(15px, 1.8vw, 17px);
+  line-height: 1.6;
+  color: var(--muted);
+  max-width: 58ch;
+}
+
+.hero-actions {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-top: 8px;
+}
+
+.hero-actions .btn {
+  min-height: 44px;
+  padding: 0 20px;
+  font-size: 14px;
+}
+
+/* Metrics Bar */
+.metrics-row {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 16px;
+  padding: 20px 24px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+}
+
+.metric-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.metric-val {
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--accent);
+  font-family: var(--mono);
+}
+
+.metric-lab {
+  font-size: 12px;
+  color: var(--faint);
+  line-height: 16px;
+}
+
+/* 2. Live Interactive Simulator */
+.demo-sec {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.sec-head {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.sec-title {
+  font-size: 20px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.sec-sub {
+  font-size: 14px;
+  color: var(--muted);
+}
+
+.demo-tabs {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.demo-chip {
+  padding: 8px 14px;
+  background: var(--raised);
+  border: 1px solid var(--control);
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all .15s ease;
+}
+
+.demo-chip:hover {
+  background: var(--surface);
+  border-color: var(--accent);
+}
+
+.demo-chip[aria-selected="true"] {
+  background: var(--accent);
+  color: #fff;
+  border-color: var(--accent);
+}
+
+.demo-board {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  background: var(--ground);
+  padding: 16px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+}
+
+.demo-panel {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.demo-panel-title {
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: .03em;
+  color: var(--faint);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+
+.demo-panel-title .mono {
+  white-space: nowrap;
+  font-size: 11px;
+}
+
+.demo-text-box {
+  font-family: var(--mono);
+  font-size: 12px;
+  line-height: 18px;
+  white-space: pre-wrap;
+  color: var(--text);
+  background: var(--raised);
+  padding: 12px;
+  border-radius: 4px;
+  border: 1px solid var(--rule);
+  min-height: 160px;
+}
+
+.demo-output-box {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* 3. Bento Grid Section */
+.bento-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 20px;
+}
+
+.bento-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  transition: border-color .15s ease, transform .15s ease;
+}
+
+.bento-card:hover {
+  border-color: var(--control);
+  transform: translateY(-1px);
+}
+
+.bento-icon {
+  width: 40px;
+  height: 40px;
+  border-radius: 8px;
+  background: var(--accent-pale);
+  color: var(--accent);
+  display: grid;
+  place-items: center;
+}
+
+.bento-icon svg {
+  width: 22px;
+  height: 22px;
+}
+
+.bento-card h3 {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.bento-card p {
+  font-size: 14px;
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+.bento-card .bento-foot {
+  margin-top: auto;
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--accent);
+  font-weight: 500;
+}
+
+/* 4. Comparison Section */
+.compare-sec {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 20px;
+}
+
+.compare-card {
+  padding: 24px;
+  border-radius: var(--radius-card);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.compare-card.bad {
+  background: #fef2f2;
+  border: 1px solid #fee2e2;
+}
+
+.compare-card.bad h3 {
+  color: #991b1b;
+  font-size: 16px;
+}
+
+.compare-card.bad li {
+  font-size: 13px;
+  color: #7f1d1d;
+  line-height: 20px;
+  position: relative;
+  padding-left: 20px;
+  margin-bottom: 8px;
+}
+
+.compare-card.bad li::before {
+  content: "✕";
+  position: absolute;
+  left: 0;
+  color: #b91c1c;
+  font-weight: bold;
+}
+
+.compare-card.good {
+  background: #ecfdf5;
+  border: 1.5px solid #a7f3d0;
+}
+
+.compare-card.good h3 {
+  color: #065f46;
+  font-size: 16px;
+}
+
+.compare-card.good li {
+  font-size: 13px;
+  color: #064e3b;
+  line-height: 20px;
+  position: relative;
+  padding-left: 20px;
+  margin-bottom: 8px;
+}
+
+.compare-card.good li::before {
+  content: "✓";
+  position: absolute;
+  left: 0;
+  color: #059669;
+  font-weight: bold;
+}
+
+/* 5. CTA Footer */
+.landing-cta {
+  background: var(--text);
+  color: #fff;
+  border-radius: var(--radius-sheet);
+  padding: 40px 32px;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+}
+
+.landing-cta h2 {
+  font-size: 24px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.landing-cta p {
+  color: #9ca3af;
+  max-width: 50ch;
+  font-size: 15px;
+}
+
+.landing-cta .btn {
+  background: #fff;
+  color: var(--text);
+  border-color: #fff;
+  font-weight: 600;
+  min-height: 44px;
+  padding: 0 24px;
+}
+
+.landing-cta .btn:hover {
+  background: var(--raised);
+}
+
+/* Responsive */
+@media (max-width: 900px) {
+  .landing-wrap {
+    gap: 32px;
+  }
+  .demo-sec {
+    padding: 16px 12px;
+  }
+  .demo-board {
+    grid-template-columns: 1fr;
+    padding: 10px;
+    gap: 12px;
+  }
+  .demo-panel {
+    padding: 12px 10px;
+  }
+  .demo-text-box {
+    min-height: 120px;
+    word-break: break-word;
+  }
+  .metrics-row {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  .bento-grid {
+    grid-template-columns: 1fr;
+  }
+  .compare-sec {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 480px) {
+  .metrics-row {
+    grid-template-columns: 1fr;
+  }
+  .demo-chip {
+    width: 100%;
+    text-align: left;
+  }
+}

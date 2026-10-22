@@ -10,6 +10,7 @@
 <link rel="stylesheet" href="fonts.css">
 <link rel="stylesheet" href="app.css">
 <link rel="stylesheet" href="dual-ai.css">
+<link rel="stylesheet" href="landing.css">
 </head>
 <body>
 <div class="frame">
@@ -20,12 +21,13 @@
   </header>
 
   <aside class="sidebar" id="sidebar">
-    <div class="brand">
+    <a class="brand" href="#/beranda">
       <span class="mark" aria-hidden="true">T</span>
       <span><b>Tera</b><small>Pemeriksaan label</small></span>
-    </div>
+    </a>
     <div class="scope">Pengawasan pangan olahan<small>Disperindag</small></div>
     <nav aria-label="Menu utama">
+      <a class="nav-item" href="#/beranda" data-nav="beranda"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 10.5L12 3l9 7.5V20a1 1 0 0 1-1 1h-5v-6h-6v6H4a1 1 0 0 1-1-1v-9.5z"/></svg>Beranda Tera</a>
       <a class="nav-item" href="#/" data-nav="antrean"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 6h16M4 12h16M4 18h10"/></svg>Antrean <span class="nav-count" id="navCount"></span></a>
       <a class="nav-item" href="#/baru" data-nav="baru"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 5v14M5 12h14"/></svg>Periksa label baru</a>
       <a class="nav-item" href="#/aturan" data-nav="aturan"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M6 4h9l3 3v13H6zM9 11h6M9 15h6"/></svg>Dasar aturan</a>

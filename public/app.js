@@ -590,6 +590,232 @@ function updateUserBox() {
   });
 }
 
+/* ---------- beranda / landing page ---------- */
+const LANDING_DEMOS = [
+  {
+    name: 'Sirup Jahe (Klaim Medis Terlarang)',
+    productName: 'Sirup Jahe Merah',
+    owner: 'CV Rempah Nusantara',
+    text: `SIRUP JAHE MERAH\nMenyembuhkan asam lambung dan menghangatkan badan. Tanpa pengawet, 100% alami.\nKomposisi: jahe merah, gula pasir, air, serai.\nIsi bersih: 330 ml\nDiproduksi oleh: CV Rempah Nusantara, Jl. Raya Ciputat No. 45, Kec. Ciputat, Kota Tangerang Selatan\nHalal\nTanggal produksi: 20 Okt 2026\nKedaluwarsa: 20 Apr 2027`,
+  },
+  {
+    name: 'Keripik Tempe (Format Standar Lengkap)',
+    productName: 'Keripik Tempe Renyah Original',
+    owner: 'UD Warsih Jaya',
+    text: `KERIPIK TEMPE RENYAH ORIGINAL\nKomposisi: tempe (kedelai), tepung beras, tepung tapioka, bawang putih, ketumbar, garam, minyak kelapa sawit.\nBerat bersih: 150 g\nDiproduksi oleh: UD Warsih Jaya\nJl. Melati No. 12, Kec. Pamulang, Kota Tangerang Selatan\nHalal (logo BPJPH)\nKode produksi: 2410A\nBaik digunakan sebelum: 12 Januari 2027\nMD 267812345601`,
+  },
+  {
+    name: 'Brownies Kukus (Alergen Tanpa Tebal)',
+    productName: 'Brownies Kukus Cokelat',
+    owner: 'Rumah Kue Anisa',
+    text: `BROWNIES KUKUS COKELAT\nKomposisi: tepung terigu, telur, gula, mentega, cokelat bubuk, pengembang.\nBerat bersih: 400 g\nDiproduksi oleh: Rumah Kue Anisa, Jl. Anggrek No. 9, Kec. Pamulang, Kota Tangerang Selatan\nHalal\nKedaluwarsa: 3 hari setelah produksi\nMD 267812345607`,
+  },
+];
+
+function renderLanding() {
+  let activeIdx = 0;
+
+  const updateDemo = (idx) => {
+    activeIdx = idx;
+    const demo = LANDING_DEMOS[idx];
+    const res = check({ label: demo.text, name: demo.productName, nie: '' });
+    const ext = res.extracted || {};
+    const ba = res.berita_acara || {};
+
+    const demoTextEl = $('#demoText');
+    const demoOutEl = $('#demoOutput');
+    if (demoTextEl) demoTextEl.textContent = demo.text;
+
+    if (demoOutEl) {
+      const vKey = res.verdict.key;
+      const vPill = vKey === 'lengkap'
+        ? `<span class="pill ok">Sesuai Regulasi (${res.ok}/9 Butir)</span>`
+        : `<span class="pill bad">Perlu Perbaikan (${res.miss} Butir Belum Sesuai)</span>`;
+
+      demoOutEl.innerHTML = `
+        <div style="display:flex;justify-content:space-between;align-items:center;padding-bottom:8px;border-bottom:1px solid var(--border)">
+          <b>Vonis Hukum Realtime:</b>
+          ${vPill}
+        </div>
+        <div style="font-size:12px;display:grid;gap:6px;margin-top:4px">
+          <div><b>AI 1 (Ekstraksi Entitas):</b> ${ext.komposisi?.length || 0} bahan teridentifikasi, ${ext.alergen?.length || 0} alergen, Netto ${ext.berat_bersih?.nilai || '-'} ${ext.berat_bersih?.satuan || ''}.</div>
+          <div><b>AI 2 (Audit Hukum):</b> ${(ba.temuan || []).length} temuan keterangan wajib.</div>
+          ${(ba.pelanggaran_klaim || []).length ? `<div style="color:var(--negative)"><b>Pelanggaran Klaim (PerBPOM 1/2022):</b> ${ba.pelanggaran_klaim.join(', ')}</div>` : ''}
+          <div style="background:var(--raised);padding:8px;border-radius:4px;border-left:3px solid var(--accent);margin-top:4px">
+            <b>Rekomendasi Dinas:</b> ${esc(ba.rekomendasi)}
+          </div>
+        </div>
+      `;
+    }
+  };
+
+  view.innerHTML = `
+    <div class="landing-wrap">
+      <!-- 1. Hero Section -->
+      <section class="hero-sec">
+        <div class="hero-tag">
+          <span class="tag-dot"></span>
+          <span>Sistem Kepatuhan Mutu & Label Pangan Olahan Disperindag</span>
+        </div>
+        <h1 class="hero-title">Pemeriksaan Label BPOM. Tanpa Birokrasi Form, Tanpa Halusinasi Hukum.</h1>
+        <p class="hero-desc">
+          Mengubah teks kemasan acak menjadi Berita Acara resmi Disperindag dan draf WhatsApp edukasi UMKM dalam hitungan detik. Menggabungkan arsitektur Dual-AI, audit 9 pasal wajib PerBPOM 31/2018 jo 20/2021, dan integrasi data hukum JDIH BPOM RI.
+        </p>
+        <div class="hero-actions">
+          <a class="btn primary" href="#/baru">Periksa Label Sekarang →</a>
+          <a class="btn" href="#/">Buka Antrean Pengawasan</a>
+          <a class="btn" href="#/jdih">Kanal Regulasi JDIH</a>
+        </div>
+
+        <div class="metrics-row">
+          <div class="metric-item">
+            <span class="metric-val">9 Butir</span>
+            <span class="metric-lab">Keterangan Wajib PerBPOM 31/2018 jo 20/2021</span>
+          </div>
+          <div class="metric-item">
+            <span class="metric-val">&lt; 1 Detik</span>
+            <span class="metric-lab">Kecepatan Audit & Ekstraksi Entitas Multimodal</span>
+          </div>
+          <div class="metric-item">
+            <span class="metric-val">0.00%</span>
+            <span class="metric-lab">Risiko Halusinasi (SHA-256 Hash Locked JDIH)</span>
+          </div>
+          <div class="metric-item">
+            <span class="metric-val">&lt; 30 MB</span>
+            <span class="metric-lab">Jejak Memori Rust Single-Binary Zero-Leak</span>
+          </div>
+        </div>
+      </section>
+
+      <!-- 2. Interactive Live Simulator -->
+      <section class="demo-sec">
+        <div class="sec-head">
+          <h2 class="sec-title">Uji Coba Langsung Mesin Dual-AI</h2>
+          <p class="sec-sub">Pilih salah satu sampel produk pangan UMKM di bawah dan saksikan audit kepatuhan berjalan seketika.</p>
+        </div>
+
+        <div class="demo-tabs" role="tablist">
+          ${LANDING_DEMOS.map((d, i) => `
+            <button class="demo-chip" data-idx="${i}" role="tab" aria-selected="${i === 0}">
+              ${esc(d.name)}
+            </button>
+          `).join('')}
+        </div>
+
+        <div class="demo-board">
+          <div class="demo-panel">
+            <div class="demo-panel-title">
+              <span>Teks Kemasan yang Diuji</span>
+              <span class="mono">Input Mentah</span>
+            </div>
+            <div class="demo-text-box" id="demoText"></div>
+          </div>
+          <div class="demo-panel">
+            <div class="demo-panel-title">
+              <span>Hasil Analisis Dual-AI Tera</span>
+              <span class="mono">Engine Realtime</span>
+            </div>
+            <div class="demo-output-box" id="demoOutput"></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- 3. Bento Grid Keunggulan -->
+      <section class="sec-head">
+        <h2 class="sec-title">Mengapa Tera Mengubah Paradigma Pengawasan Pangan</h2>
+        <p class="sec-sub">Dirancang khusus untuk realitas lapangan dinas dan pendampingan UMKM Indonesia.</p>
+      </section>
+
+      <div class="bento-grid">
+        <article class="bento-card">
+          <div class="bento-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+          </div>
+          <h3>Berita Acara Resmi Disperindag & Tanda Tangan Digital</h3>
+          <p>Otomatis menyusun Berita Acara pemeriksaan lengkap dengan dasar hukum, temuan butir pelanggaran, dan stempel digital kriptografis (DS-TERA) siap tanda tangan Auditor Hukum.</p>
+          <div class="bento-foot">Pasal 5 PerBPOM 31/2018 · Format Formal Dinas</div>
+        </article>
+
+        <article class="bento-card">
+          <div class="bento-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg>
+          </div>
+          <h3>Pendampingan Humanis via Draf WhatsApp UMKM</h3>
+          <p>Bukan sekadar menghukum pelaku usaha. Tera mengonversi pasal undang-undang yang rumit menjadi petunjuk perbaikan yang ramah, sopan, dan langsung dapat dikirim via WhatsApp dengan 1-klik.</p>
+          <div class="bento-foot">wa.me Redirect · Bahasa Edukatif Santun</div>
+        </article>
+
+        <article class="bento-card">
+          <div class="bento-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="M9 12l2 2 4-4"/></svg>
+          </div>
+          <h3>Kanal Regulasi JDIH Terkunci Anti-Halusinasi</h3>
+          <p>AI dilarang mengutip pasal usang. Seluruh engine terikat pada regulasi aktif (PerBPOM 22/2025 s.d. 31/2018) dengan validasi fingerprint SHA-256 yang selaras dengan JDIHN BPHN Kemenkumham.</p>
+          <div class="bento-foot">JDIH BPOM RI · SHA-256 Immutability</div>
+        </article>
+
+        <article class="bento-card">
+          <div class="bento-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+          </div>
+          <h3>Keandalan Ekstrem: Rust Single-Binary Engine</h3>
+          <p>Dibangun dengan standar sekte fanatik Rustacean (#![forbid(unsafe_code)]). Menggunakan SQLite WAL mode, jejak memori di bawah 30MB, dan single binary mandiri tanpa dependensi runtime.</p>
+          <div class="bento-foot">Axum 0.8 · SQLx WAL Mode · Zero-Leak</div>
+        </article>
+      </div>
+
+      <!-- 4. Komparasi Cara Lama vs Cara Tera -->
+      <section class="sec-head">
+        <h2 class="sec-title">Perbandingan Metode Kerja</h2>
+        <p class="sec-sub">Efisiensi pengawasan lapangan tanpa beban birokrasi manual.</p>
+      </section>
+
+      <div class="compare-sec">
+        <div class="compare-card bad">
+          <h3>✕ Cara Konvensional (Portal e-Reg & Audit Manual)</h3>
+          <ul>
+            <li>Formulir bertingkat puluhan tab yang membingungkan pelaku usaha.</li>
+            <li>Antrean verifikasi manual memakan waktu 14 hingga 45 hari kerja.</li>
+            <li>Surat penolakan memakai bahasa birokrasi kaku tanpa petunjuk draf yang benar.</li>
+            <li>Rawan kesalahan audit manusia saat meninjau ratusan teks komposisi mikro.</li>
+          </ul>
+        </div>
+        <div class="compare-card good">
+          <h3>✓ Solusi Cerdas Tera (Dual-AI + Disperindag)</h3>
+          <ul>
+            <li>Cukup tempel teks label atau jepret kemasan produk secara langsung.</li>
+            <li>Audit kepatuhan selesai dalam hitungan detik secara otomatis.</li>
+            <li>Menghasilkan draf WhatsApp santun untuk langsung diedukasikan ke UMKM.</li>
+            <li>Arsip Berita Acara resmi tersahkan dengan tanda tangan digital kriptografis.</li>
+          </ul>
+        </div>
+      </div>
+
+      <!-- 5. CTA Akhir -->
+      <section class="landing-cta">
+        <h2>Mulai Transformasi Kepatuhan Produk di Wilayah Anda</h2>
+        <p>Gunakan Tera untuk mempercepat proses pengawasan mutu pangan olahan dan membina UMKM secara terukur, cepat, dan transparan.</p>
+        <div class="actions">
+          <a class="btn" href="#/baru">Periksa Label Baru Sekarang</a>
+          <a class="btn" href="#/login" style="background:transparent;color:#fff;border-color:rgba(255,255,255,0.4)">Masuk Akun Dinas</a>
+        </div>
+      </section>
+    </div>
+  `;
+
+  // Bind interactive demo chips
+  $$('.demo-chip', view).forEach((b) => {
+    b.addEventListener('click', () => {
+      $$('.demo-chip', view).forEach((btn) => btn.setAttribute('aria-selected', 'false'));
+      b.setAttribute('aria-selected', 'true');
+      updateDemo(Number(b.dataset.idx));
+    });
+  });
+
+  updateDemo(0);
+  setNav('beranda', 'Beranda Tera');
+}
+
 /* ---------- masuk akun (login) ---------- */
 function renderLogin() {
   const cur = auth.currentSession();
@@ -731,6 +957,7 @@ function route() {
   updateUserBox();
   const h = location.hash.replace(/^#/, '') || '/';
   if (h.startsWith('/p/')) renderDetail(decodeURIComponent(h.slice(3)));
+  else if (h === '/beranda') renderLanding();
   else if (h === '/baru') renderNew();
   else if (h === '/aturan') renderRules();
   else if (h === '/jdih') renderJdih();
