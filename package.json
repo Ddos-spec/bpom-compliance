@@ -1,9 +1,12 @@
 {
   "name": "tera-label-check",
+  "version": "0.3.0",
   "private": true,
   "type": "module",
+  "engines": { "node": ">=22.5.0" },
   "scripts": {
     "start": "node server.mjs",
-    "e2e": "node e2e/run.cjs"
+    "test": "node tests/smoke.mjs && node tests/edge.mjs",
+    "test:browser:isolated": "python tests/ui_isolated.py"
   }
 }

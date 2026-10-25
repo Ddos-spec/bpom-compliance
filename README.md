@@ -1,40 +1,65 @@
-# Tera: pemeriksaan label pangan olahan
+# Tera Public — Label Readiness SaaS (Audit V3)
 
-Alat bantu petugas Disperindag dan UMKM untuk memeriksa label produk terhadap 9 keterangan wajib
-(Peraturan BPOM 31/2018 Pasal 5 ayat 1, diubah 20/2021). Frontend tanpa dependensi npm.
+**Status:** siap untuk demo/pilot internal terkontrol; **belum boleh disebut siap produksi komersial**. Paket ini merevisi dan **menggantikan** `TERA_PUBLIC_PAID_REDESIGN_V2.zip` serta versi MVP sebelumnya. Tidak perlu memasang ZIP lama dahulu.
+
+Tera adalah layanan independen berbayar bagi usaha pangan olahan untuk **memeriksa kesiapan awal teks label** sebelum menempuh mekanisme registrasi BPOM yang sesuai. Tidak ada hubungan resmi dengan BPOM/Disperindag, tidak termasuk pembayaran PNBP, bukan layanan pendaftaran BPOM, dan tidak menjamin izin edar. Harga Rp25.000 adalah **contoh pilot**, bukan tarif resmi atau keputusan bisnis final.
+
+## UI/UX
+
+- Landing page publik berkonsep editorial packaging (tanpa foto AI, tanpa angka testimonial/analitik fiktif).
+- Demo checklist interaktif, langkah penggunaan, fitur, harga dinamis dari backend, dan FAQ.
+- Form dua tahap: informasi usaha, produk dan teks label, persetujuan data, checkout via Midtrans Snap (server-side).
+- Dashboard privat per pengajuan: status pembayaran, timeline, checklist otomatis, langkah berikutnya, cetak laporan, salin tautan, dan refresh.
+- Layout teruji pada lebar 1440, 390 dan 320 px melalui Chromium terisolasi; screenshot terbaru ada di `design-preview/*-v3.png`.
+- **Belum ada** unggah foto dan OCR, akun pelanggan multi-produk, pemulihan akses melalui email, atau checkout produksi yang diuji.
 
 ## Jalankan
-```
-node server.mjs          # http://localhost:4173   (atau: npm start)
-```
-Mode AI (OpenRouter): salin `.env.example` jadi `.env`, isi `OPENROUTER_API_KEY` dan `OPENROUTER_MODEL`.
-Tanpa itu aplikasi tetap jalan memakai mesin aturan saja. Frontend juga tetap jalan tanpa server sama sekali.
 
-## Verifikasi end-to-end (jalur untuk AI maupun manusia)
+Runtime Node.js **>=22.5**, direkomendasikan 24 LTS. Database lokal SQLite butuh direktori persisten. Ini **bukan** server statis / serverless tanpa volume persisten.
+
+```bash
+cp .env.example .env
+# isi konfigurasi yang sesuai di file .env
+npm start
+# buka http://localhost:4173
 ```
-node server.mjs &        # server harus hidup
-node e2e/run.cjs         # atau: npm run e2e
+
+`.env.example` menyediakan `PORT`, `SERVICE_FEE_IDR`, `MIDTRANS_SERVER_KEY`, `MIDTRANS_IS_PRODUCTION`, `TERA_ADMIN_KEY`, `TERA_DATA_DIR`.
+
+Jika `MIDTRANS_SERVER_KEY` kosong, pengajuan berbayar **dinonaktifkan** dan landing tetap dapat dibuka. Mulai dengan **akun Midtrans sandbox**. Setelah webhook disetel ke `https://domain-anda/api/payments/midtrans/notification`, lakukan UAT pembayaran sandbox; jangan beralih ke production key sebelum semua skenario lulus.
+
+Kode mengarahkan payment status query ke Midtrans Status API pada sandbox/production sesuai konfigurasi, dengan cache cooldown 15 detik per pengajuan. Kode hanya menganggap transaksi lunas jika verifikasi Status API atau notifikasi bersignature berhasil dan nominalnya sesuai.
+
+## Test
+
+```bash
+npm test                            # API smoke + edge; menggunakan simulasi payment lokal
+python tests/ui_isolated.py         # opsional: playwright Python + Chromium terpasang
 ```
-Menjalankan 54 pemeriksaan di Chromium (desktop 1440 dan mobile 390): antrean, cari, urut, detail, edit teks,
-NIE, catatan, perubahan tahap, form baru, upload foto, ekspor/reset, drawer mobile, error console, overflow.
-Screenshot tiap layar tersimpan di `.e2e/shots/*.png` supaya hasil visualnya bisa dilihat langsung.
-Pemeriksaan desain: `node _refs/taste-skill/skills/taste-skill/scripts/inspect.mjs --app http://localhost:4173/`.
-Playwright dipakai dari `D:\code\.system_tools\browser_runner` (tidak di-install ulang di proyek ini).
 
-## Arsitektur
-- `public/rules.js`: mesin aturan deterministik, dipakai browser dan server.
-- `public/api.js`: adapter. Coba backend dulu, jatuh ke mesin lokal bila tidak ada. Kontrak API ada di kepala file.
-- `public/store.js`: penyimpanan sementara di `localStorage`. Diganti DB saat backend jadi.
-- `server.mjs`: server sementara (statik + `/api/analyze` ke OpenRouter). Kunci hanya di server.
+Tes browser memakai markup/JavaScript aktual dan **mock API**, bukan pembayaran asli, sebab lingkungan audit memblokir navigasi Chromium ke localhost. Tidak ada klaim end-to-end lintas browser ke server produksi. Lihat `QA_REPORT.md` untuk bukti dan yang masih gagal dipenuhi.
 
-## Rencana backend Rust (belum dikerjakan)
-axum + tokio, `rusqlite` (bundled) untuk data, `reqwest` (rustls) ke OpenRouter, file statis disajikan dari binary yang sama.
-Satu binary statis, target RAM puluhan MB. Kontrak API sama dengan `public/api.js`, jadi frontend tidak diubah.
-Build wajib lewat GitHub Actions (musl, release), bukan di laptop. Cek nomor izin edar: port logika `suryast/indonesia-civic-stack`.
+## Endpoint
 
-## Belum selesai / harus diganti
-- `public/data.js`: SEMUA data contoh fiktif (usaha, alamat, nomor MD).
-- Nomor izin edar baru dicek formatnya, belum ke BPOM (`/api/nie` belum ada).
-- Nomor pasal belum dicocokkan dengan naskah resmi pom.go.id.
-- AI OpenRouter belum pernah diuji (belum ada API key dan model).
-- Belum ada: login, DB di server, OCR tanpa AI, kosmetik/obat tradisional.
+| Method | Endpoint | Akses |
+| --- | --- | --- |
+| GET | `/api/public/config` | Publik; tarif dan status gateway |
+| POST | `/api/public/applications` | Publik; registrasi & checkout Midtrans |
+| GET | `/api/public/applications/:id` | Harus `Authorization: Bearer <accessToken>` |
+| POST | `/api/payments/midtrans/notification` | Midtrans; cek SHA512 notification signature |
+| GET | `/api/staff/applications` | Staf; `Authorization: Bearer <TERA_ADMIN_KEY>` |
+| GET/PATCH | `/api/staff/applications/:id` | Staf; autentikasi sama |
+
+API staf belum dashboard staf publik. Admin key harus acak >=24 karakter. Data pelanggan berada di `data/tera_public.db` atau path `TERA_DATA_DIR`; folder database produksi **tidak** dikemas di ZIP.
+
+## Integrasi ke repo lama
+
+Repo sumber: https://github.com/Ddos-spec/bpom-compliance
+
+1. Buat branch cadangan dari repo lama, lalu extract **isi folder** `tera-redesign-audit-v3/` ke **root repo** (bukan nested).
+2. Pastikan `server.mjs`, `public/index.html`, `public/public.js`, `public/public.css`, `public/rules.js`, `public/favicon.svg`, `package.json`, `.env.example` ikut menggantikan/menambah berkas yang semestinya.
+3. Lakukan `npm test`; konfigurasikan `.env`, volume persisten, HTTPS, dan merchant sandbox.
+4. Aplikasi lama di repo mungkin menyimpan file demo petugas, tetapi server V3 hanya menyajikan aset publik whitelist. Jangan gunakan endpoint petugas lama di lingkungan produksi.
+5. Jangan menimpa database pelanggan lama tanpa migrasi, backup, dan uji restore.
+
+**Penting:** tidak ada perubahan otomatis ke GitHub. Paket ini disiapkan sebagai ZIP patch terpisah.

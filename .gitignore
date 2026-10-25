@@ -1,10 +1,7 @@
-node_modules/
 .env
-.env.local
-_refs/
-.taste-skill/
+.env.*
+!.env.example
+node_modules/
+data/*.db*
+data/customer_uploads/
 .e2e/
-.vercel
-data/tera.db*
-data/images/*
-!data/images/.gitkeep

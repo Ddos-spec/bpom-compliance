@@ -1,56 +1,70 @@
 <!doctype html>
 <html lang="id">
 <head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="theme-color" content="#f1f5f2">
-<title>Tera · Pemeriksaan label</title>
-<link rel="icon" href="icon.svg" type="image/svg+xml">
-<link rel="preload" href="fonts/IBMPlexSans.woff2" as="font" type="font/woff2" crossorigin>
-<link rel="stylesheet" href="fonts.css">
-<link rel="stylesheet" href="app.css">
-<link rel="stylesheet" href="dual-ai.css">
-<link rel="stylesheet" href="landing.css">
-<link rel="stylesheet" href="dashboard.css">
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#f7f5ef">
+  <link rel="icon" href="favicon.svg" type="image/svg+xml">
+  <meta name="description" content="Tera membantu pelaku usaha meninjau kelengkapan label pangan olahan melalui layanan pemeriksaan awal mandiri, transparan, dan terjangkau.">
+  <meta property="og:title" content="Tera — Label lebih siap. Langkah lebih pasti.">
+  <meta property="og:description" content="Pemeriksaan awal label pangan olahan yang mudah dipahami pelaku usaha. Layanan independen, bukan situs resmi BPOM.">
+  <title>Tera — Label lebih siap. Langkah lebih pasti.</title>
+  <link rel="stylesheet" href="public.css">
+  <script type="module" src="public.js"></script>
 </head>
 <body>
-<div class="frame">
-  <header class="mbar">
-    <button class="icon-btn" id="menuBtn" aria-label="Buka menu" aria-expanded="false" aria-controls="sidebar"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 7h16M4 12h16M4 17h16"/></svg></button>
-    <span class="mbar-title" id="mbarTitle">Beranda Operasional</span>
-    <div style="display:flex;align-items:center;gap:6px">
-      <a class="btn primary mbar-act" href="#/baru" style="font-size:12px;padding:0 10px;min-height:30px">Periksa baru</a>
-      <div id="mbarAuthSlot"></div>
+  <a class="skip-link" href="#main">Lewati navigasi</a>
+  <div class="utility-strip"><div class="shell utility-content"><span><span class="utility-dot"></span> Layanan pemeriksaan awal untuk pelaku usaha pangan olahan</span><span>INDEPENDENT LABEL READINESS PLATFORM <span aria-hidden="true">↗</span></span></div></div>
+  <header class="site-header" id="siteHeader">
+    <div class="shell nav-shell">
+      <a class="brand" href="#home" aria-label="Tera — Beranda"><span class="brand-icon">t<span>·</span></span><span class="brand-word">tera</span></a>
+      <button class="menu-toggle" id="menuToggle" aria-label="Buka navigasi" aria-expanded="false" aria-controls="mainNav"><span></span><span></span></button>
+      <nav class="site-nav" id="mainNav" aria-label="Navigasi utama"><a href="#how">Cara kerja</a><a href="#features">Keunggulan</a><a href="#price">Harga</a><a href="#faq">Pertanyaan umum</a></nav>
+      <div class="nav-actions"><a class="nav-dashboard" id="dashboardLink" href="#track">Ruang pengajuan <span aria-hidden="true">↗</span></a><a class="btn btn-dark nav-primary" href="#apply">Mulai sekarang <span aria-hidden="true">↗</span></a></div>
     </div>
   </header>
-
-  <aside class="sidebar" id="sidebar">
-    <a class="brand" href="#/beranda">
-      <span class="mark" aria-hidden="true">T</span>
-      <span><b>Tera</b><small>Pemeriksaan label</small></span>
-    </a>
-    <div class="scope">Pengawasan pangan olahan<small>Disperindag</small></div>
-    <nav aria-label="Menu utama">
-      <a class="nav-item" href="#/beranda" data-nav="beranda"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 10.5L12 3l9 7.5V20a1 1 0 0 1-1 1h-5v-6h-6v6H4a1 1 0 0 1-1-1v-9.5z"/></svg>Beranda Tera</a>
-      <a class="nav-item" href="#/" data-nav="antrean"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 6h16M4 12h16M4 18h10"/></svg>Antrean <span class="nav-count" id="navCount"></span></a>
-      <a class="nav-item" href="#/baru" data-nav="baru"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 5v14M5 12h14"/></svg>Periksa label baru</a>
-      <a class="nav-item" href="#/aturan" data-nav="aturan"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M6 4h9l3 3v13H6zM9 11h6M9 15h6"/></svg>Dasar aturan</a>
-      <a class="nav-item" href="#/jdih" data-nav="jdih"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>Regulasi JDIH</a>
-      <a class="nav-item" href="#/landing" data-nav="landing"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>Portal Publik & Demo</a>
-    </nav>
-    <nav class="bottom-nav" aria-label="Menu pengaturan">
-      <a class="nav-item" href="#/setelan" data-nav="setelan"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="3"/><path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M18.4 5.6l-2.1 2.1M7.7 16.3l-2.1 2.1"/></svg>Pengaturan</a>
-      <div id="authNavSlot"></div>
-    </nav>
-    <div id="userBox"></div>
-    <div class="side-foot" id="aiState"></div>
-  </aside>
-  <div class="scrim" id="scrim"></div>
-
-  <main class="sheet" id="view" tabindex="-1"></main>
-</div>
-<div id="toast" class="toast" role="status" aria-live="polite"></div>
-<dialog id="imgDlg" aria-label="Foto label"><button id="dlgClose" class="btn sm" aria-label="Tutup">Tutup</button><img id="dlgImg" alt="Foto label diperbesar"></dialog>
-<script type="module" src="app.js"></script>
+  <main id="main">
+    <div id="homeView">
+      <section class="hero-section" id="hero">
+        <div class="shell hero-grid">
+          <div class="hero-content">
+            <div class="eyebrow"><span class="eyebrow-rule"></span> INFORMASI LABEL, DIBUAT LEBIH SEDERHANA</div>
+            <h1>Produk bagus<br>pantas punya<br><em>label yang siap.</em></h1>
+            <p class="hero-lead">Ketahui bagian label pangan olahan yang perlu dilengkapi, sebelum melangkah ke proses perizinan resmi. Jelas, terstruktur, tanpa harus menebak-nebak.</p>
+            <div class="hero-actions"><a class="btn btn-lime btn-large" href="#apply">Periksa label produk <span class="btn-arrow">↗</span></a><a class="text-link" href="#how">Lihat cara kerja <span>↗</span></a></div>
+            <div class="hero-bottom"><span class="icon-circle" aria-hidden="true">✓</span><span>Untuk UMKM, pemilik merek, dan produsen pangan olahan.</span></div>
+          </div>
+          <div class="hero-art" role="img" aria-label="Ilustrasi kemasan pangan dan panel pemeriksaan informasi label. Semua data hanya contoh visual.">
+            <div class="art-coordinate art-coordinate-left">FIG. 01 &nbsp; / &nbsp; PRODUCT READINESS</div><div class="art-coordinate art-coordinate-right">TERA / 2026</div>
+            <div class="art-orbit orbit-1"></div><div class="art-orbit orbit-2"></div>
+            <div class="product-pack"><div class="pack-topline"><span>STUDIO / SAMPLE</span><span>001</span></div><div class="pack-organic"><span class="organic-leaf"></span><span class="organic-leaf leaf-two"></span></div><span class="pack-label">RASA<br><i>RONA.</i></span><span class="pack-sub">KERIPIK UMBI PILIHAN</span><span class="pack-weight">NETTO &nbsp; 150 G</span><span class="pack-footer">ILUSTRASI KEMASAN — BUKAN PRODUK NYATA</span></div>
+            <div class="inspection-card"><div class="inspection-heading"><span class="inspec-symbol">✳</span><div><strong>Label overview</strong><small>Contoh simulasi, bukan hasil audit</small></div><span class="inspection-more">↗</span></div><div class="mini-finding"><span class="mini-mark success">✓</span><span>Komposisi</span><small>Terdeteksi</small></div><div class="mini-finding"><span class="mini-mark success">✓</span><span>Berat bersih</span><small>Terdeteksi</small></div><div class="mini-finding"><span class="mini-mark warn">!</span><span>Alamat produsen</span><small>Perlu ditinjau</small></div><div class="inspection-tail"><span>BUKAN PERSETUJUAN BPOM</span><span>03 / 09</span></div></div>
+            <div class="art-bottom-note">THE CLARITY YOUR PRODUCT DESERVES. <span>↗</span></div>
+          </div>
+        </div>
+      </section>
+      <div class="value-band"><div class="shell value-band-inner"><span>LABEL READINESS</span><span class="value-spark">✳</span><span>JELAS SEBELUM MELANGKAH</span><span class="value-spark">✳</span><span>BUAT PELAKU USAHA</span><span class="value-spark">✳</span><span>LANGKAH YANG TERARAH</span></div></div>
+      <section class="section how-section" id="how"><div class="shell">
+        <div class="section-topline"><span class="kicker">01 &nbsp; / &nbsp; CARA KERJA</span><span class="topline-right">SIMPLE, FROM START TO FINISH</span></div>
+        <div class="section-intro"><h2>Tiga langkah menuju<br><em>lebih siap.</em></h2><p>Fokus pada produkmu. Tera membantu menyusun hasil pemeriksaan awal supaya mudah ditindaklanjuti.</p></div>
+        <div class="steps-grid">
+          <article class="step-card"><div class="step-card-top"><span>01</span><span class="step-deco">↗</span></div><div class="step-line"><span class="step-dot"></span><span></span></div><h3>Masukkan detail produk.</h3><p>Isi profil usaha, kategori pangan, dan teks informasi pada label. Tidak perlu mengunggah dokumen sensitif.</p><span class="step-caption">PRODUK & INFORMASI</span></article>
+          <article class="step-card"><div class="step-card-top"><span>02</span><span class="step-deco">↗</span></div><div class="step-line"><span class="step-dot"></span><span></span></div><h3>Selesaikan pembayaran.</h3><p>Biaya jelas per produk. Checkout menggunakan penyedia pembayaran; transaksi diverifikasi otomatis oleh server.</p><span class="step-caption">CHECKOUT TERLINDUNGI</span></article>
+          <article class="step-card"><div class="step-card-top"><span>03</span><span class="step-deco">↗</span></div><div class="step-line"><span class="step-dot"></span><span></span></div><h3>Pahami hasilnya.</h3><p>Buka ruang pengajuan privat, cek temuan per aspek, dan gunakan catatan sebagai panduan perbaikan label.</p><span class="step-caption">HASIL YANG ACTIONABLE</span></article>
+        </div>
+      </div></section>
+      <section class="section feature-section" id="features"><div class="shell">
+        <div class="section-topline"><span class="kicker">02 &nbsp; / &nbsp; DI DALAM TERA</span><span class="topline-right">DESIGNED FOR CLARITY</span></div>
+        <div class="feature-grid"><div class="feature-description"><h2>Bukan sekadar<br>centang hijau.</h2><p>Kami menerjemahkan pemeriksaan awal menjadi informasi yang bisa dipahami, bukan dashboard penuh jargon teknis.</p><div class="feature-points"><div><span>01 /</span><strong>Checklist per keterangan</strong><small>Lihat apa yang ditemukan dan perlu dilihat lagi.</small></div><div><span>02 /</span><strong>Alasan yang bisa ditindaklanjuti</strong><small>Setiap temuan disertai catatan singkat dan langkah berikutnya.</small></div><div><span>03 /</span><strong>Ruang hasil privat</strong><small>Akses pengajuan dari tautan pribadi, kapan diperlukan.</small></div></div></div>
+        <div class="feature-demo"><div class="demo-head"><span>TERA / CONTENT CHECKER</span><span class="demo-signal"><i></i> DEMO INTERAKTIF</span></div><div class="demo-paper"><div class="demo-title"><span>Contoh pemeriksaan</span><span>01 — 03</span></div><div class="demo-product">Keripik pisang<br><em>original</em></div><p>Simulasi ilustratif. Pilih informasi di bawah untuk melihat contoh umpan balik yang mudah dipahami.</p><div class="demo-controls" role="group" aria-label="Contoh aspek pemeriksaan"><button type="button" class="demo-tab is-active" data-demo="composition" aria-pressed="true">Komposisi</button><button type="button" class="demo-tab" data-demo="weight" aria-pressed="false">Berat bersih</button><button type="button" class="demo-tab" data-demo="producer" aria-pressed="false">Produsen</button></div><div id="demoFinding" class="demo-result" aria-live="polite"><span class="demo-result-icon">✓</span><div><strong>Komposisi teridentifikasi</strong><p>Contoh: Pisang, minyak nabati, gula. Tetap cek kesesuaian dengan resep sebenarnya.</p></div></div></div><div class="demo-foot"><span>BUKAN PENETAPAN KEPATUHAN RESMI</span><span>↗</span></div></div></div>
+      </div></section>
+      <section class="section pricing-section" id="price"><div class="shell pricing-grid"><div class="pricing-content"><div class="kicker">03 &nbsp; / &nbsp; BIAYA LAYANAN</div><h2>Sederhana di awal.<br><em>Terang sampai akhir.</em></h2><p>Biaya satu kali untuk satu produk. Kamu tahu yang didapat sebelum checkout, tanpa janji izin edar pasti terbit.</p><div class="price-aside">↗ &nbsp; Tidak termasuk PNBP atau biaya registrasi resmi pemerintah.</div></div><div class="pricing-card"><div class="pricing-head"><span>TERA / ESSENTIAL</span><span class="price-tag">ONE PRODUCT</span></div><div class="pricing-main"><div class="pricing-caption">Mulai pemeriksaan awal</div><div class="price-amount" id="priceValue" aria-live="polite">Memuat tarif…</div><span class="price-unit">per pengajuan produk</span></div><div class="price-benefits"><div><span>✓</span>Pemeriksaan awal sembilan aspek label</div><div><span>✓</span>Catatan potensi kekurangan & klaim</div><div><span>✓</span>Langkah perbaikan yang mudah dibaca</div><div><span>✓</span>Ruang hasil dan status privat</div></div><a href="#apply" class="btn btn-dark btn-block">Mulai pengajuan <span>↗</span></a><p class="price-help" id="priceHint">Tarif mengikuti konfigurasi layanan.</p></div></div></section>
+      <section class="section faq-section" id="faq"><div class="shell"><div class="section-topline"><span class="kicker">04 &nbsp; / &nbsp; PERTANYAAN UMUM</span><span class="topline-right">THE IMPORTANT DETAILS</span></div><div class="faq-grid"><div><h2>Hal penting,<br><em>tanpa tanda tanya.</em></h2><p>Transparansi bukan hanya detail kecil. Kami ingin kamu benar-benar memahami batasan layanan ini.</p></div><div class="faq-items"><details open><summary>Apakah Tera situs resmi BPOM?</summary><p>Bukan. Tera adalah layanan independen pemeriksaan awal informasi label pangan olahan, bukan perwakilan atau kanal resmi Badan POM.</p></details><details><summary>Apakah pembayaran menjamin izin edar?</summary><p>Tidak. Biaya hanya untuk pemeriksaan awal. Keputusan izin edar dan biaya resminya ditetapkan melalui mekanisme pemerintah yang berlaku.</p></details><details><summary>Apakah saya perlu punya nomor MD/ML dulu?</summary><p>Tidak harus. Jika kamu baru menyiapkan pengajuan, status nomor izin edar dapat belum tersedia. Sistem tidak otomatis menganggap kondisi tersebut sebagai pelanggaran.</p></details><details><summary>Bagaimana saya melihat laporan?</summary><p>Setelah mengirim pengajuan, kamu menerima tautan privat. Simpan baik-baik. Checklist awal otomatis tersedia setelah pembayaran terkonfirmasi oleh server. Simpan tautan privat karena belum ada pemulihan akses melalui email.</p></details><details><summary>Apakah hasil Tera sudah pemeriksaan menyeluruh?</summary><p>Belum. Tera melakukan pemeriksaan awal berbasis teks dan aturan heuristik. Desain label final, kategori produk, bukti klaim, dan regulasi khusus tetap memerlukan tinjauan lebih lanjut.</p></details></div></div></div></section>
+      <section class="closing-cta"><div class="shell closing-layout"><span class="cta-kicker">YOUR NEXT STEP, MADE CLEARER</span><h2>Siap membawa produkmu<br><em>selangkah lebih maju?</em></h2><a href="#apply" class="btn btn-lime btn-large">Mulai periksa sekarang <span>↗</span></a><div class="closing-decoration" aria-hidden="true">t.</div></div></section>
+    </div>
+    <section id="applyView" class="portal-section" hidden aria-labelledby="formTitle"><div class="shell"><div class="portal-breadcrumb"><a href="#home">← Beranda</a><span>/</span><strong>Ajukan pemeriksaan</strong></div><div class="application-grid"><div class="portal-context"><div class="kicker">TERA / NEW APPLICATION</div><h1 id="formTitle" tabindex="-1">Mulai dari<br><em>produkmu.</em></h1><p>Ceritakan usaha dan informasi pada label produk. Checklist awal otomatis dibuat dari teks label setelah pembayaran terverifikasi; hasilnya bukan audit resmi atau review ahli.</p><div class="form-journey" aria-label="Tahapan pengajuan"><div class="journey-item" id="journey1"><span>01</span><div><strong>Informasi usaha</strong><small>Siapa yang mengajukan?</small></div></div><div class="journey-item" id="journey2"><span>02</span><div><strong>Detail produk</strong><small>Produk apa yang diperiksa?</small></div></div><div class="journey-item"><span>03</span><div><strong>Pembayaran</strong><small>Checkout aman via gateway</small></div></div></div><div class="privacy-context"><span>✳</span><p>Data pengajuan tidak dipublikasikan. Tautan privat berfungsi sebagai akses ke hasil; jangan bagikan sembarangan.</p></div></div><form id="applyForm" class="application-card" novalidate><div class="form-card-header"><strong id="formStepIndicator">LANGKAH 01 / 02</strong><span>Informasi bertanda * wajib</span></div><div class="progress-rail"><span id="progressRail"></span></div><div id="step1"><div class="form-title-group"><h2>Kenalan dulu dengan usahamu.</h2><p>Gunakan informasi yang benar agar pengajuan mudah ditindaklanjuti.</p></div><div class="form-field"><label for="company">Nama usaha / merek <span>*</span></label><input id="company" name="company" required maxlength="120" autocomplete="organization" placeholder="Contoh: Dapur Sejahtera"></div><div class="field-row"><div class="form-field"><label for="contact">Penanggung jawab <span>*</span></label><input id="contact" name="contact" required maxlength="120" autocomplete="name" placeholder="Nama lengkap"></div><div class="form-field"><label for="phone">Nomor WhatsApp <span>*</span></label><input id="phone" name="phone" required maxlength="30" autocomplete="tel" inputmode="tel" placeholder="08xxxxxxxxxx"></div></div><div class="form-field"><label for="email">Alamat email <span>*</span></label><input id="email" name="email" required maxlength="200" type="email" autocomplete="email" placeholder="nama@usaha.com"></div><button class="btn btn-dark btn-block form-main-action" type="button" id="nextStep">Lanjut ke informasi produk <span>→</span></button></div><div id="step2" hidden><div class="form-title-group"><h2>Detail label yang ingin diperiksa.</h2><p>Tempelkan informasi yang akan tercetak. Hasil bergantung pada kelengkapan input.</p></div><div class="form-field"><label for="product">Nama produk <span>*</span></label><input id="product" name="product" required maxlength="140" placeholder="Contoh: Keripik Pisang Original"></div><div class="field-row"><div class="form-field"><label for="category">Kategori pangan <span>*</span></label><select id="category" name="category" required><option value="">Pilih kategori</option><option>Makanan ringan</option><option>Minuman</option><option>Produk bakeri</option><option>Olahan buah/sayur</option><option>Bumbu dan saus</option><option>Produk lainnya</option></select></div><div class="form-field"><label for="nie">Nomor MD/ML <span class="optional">Opsional</span></label><input id="nie" name="nie" maxlength="45" placeholder="Kosongkan bila belum ada"></div></div><div class="form-field"><label for="labelText">Teks informasi label <span>*</span></label><textarea id="labelText" name="labelText" minlength="30" maxlength="16000" required rows="8" placeholder="Nama produk: ...&#10;Komposisi: ...&#10;Berat bersih: ...&#10;Diproduksi oleh: ...&#10;Tanggal kedaluwarsa: ..."></textarea><div class="field-helper"><span>Minimal 30 karakter</span><span id="textCount">0 / 16.000</span></div></div><label class="consent-line"><input type="checkbox" name="consent" required><span>Saya berwenang mengajukan produk ini, menyetujui pemrosesan data untuk layanan Tera, dan memahami bahwa hasil pemeriksaan bukan izin atau persetujuan BPOM.</span></label><div class="billing-box"><div><span>ESTIMASI BIAYA</span><strong>1 produk · pemeriksaan awal</strong></div><b id="formPrice">—</b></div><div class="form-buttons"><button class="btn btn-outline" type="button" id="prevStep">← Kembali</button><button class="btn btn-dark form-submit" id="submitForm" type="submit">Buat pengajuan & bayar <span>↗</span></button></div></div><div id="formError" class="message message-error" role="alert" hidden></div><div id="paymentNotice" class="message message-neutral" role="status" hidden></div></form></div></div></section>
+    <section id="trackView" class="portal-section" hidden aria-label="Ruang pengajuan"><div class="shell"><div class="portal-breadcrumb"><a href="#home">← Beranda</a><span>/</span><strong>Ruang pengajuan</strong></div><div id="trackEntry" class="track-entry"><div class="track-intro"><span class="kicker">RUANG PENGAJUAN</span><h1 id="trackTitle">Selalu tahu<br><em>langkah berikutnya.</em></h1><p>Pantau pembayaran dan laporan melalui tautan privat yang diterima setelah membuat pengajuan.</p></div><div class="track-entry-card"><div class="track-card-index">ACCESS / PRIVATE</div><h2>Buka pengajuanmu.</h2><p>Masukkan tautan lengkap dari pengajuan Tera. Kami tidak menampilkan daftar pengajuan pengguna lain.</p><form id="trackForm"><label for="trackLink">Tautan pengajuan</label><input id="trackLink" type="url" required placeholder="https://domain-tera/#status/TR-…"><button class="btn btn-dark btn-block" type="submit">Buka dashboard <span>↗</span></button></form><div id="trackError" class="message message-error" role="alert" hidden></div></div></div><div id="trackCard" class="dashboard-root" hidden aria-live="polite"></div></div></section>
+  </main>
+  <footer class="site-footer"><div class="shell footer-layout"><a class="brand footer-brand" href="#home"><span class="brand-icon">t<span>·</span></span><span class="brand-word">tera</span></a><div class="footer-info"><strong>Label lebih siap. Langkah lebih pasti.</strong><p>Tera adalah layanan pemeriksaan awal independen, bukan platform resmi maupun perwakilan Badan POM. Informasi perizinan resmi tersedia melalui <a href="https://registrasipangan.pom.go.id/" target="_blank" rel="noopener noreferrer">Direktorat Registrasi Pangan Olahan ↗</a>.</p></div><div class="footer-last"><span>© <span id="year"></span> TERA</span><a href="#faq">Pertanyaan umum ↗</a></div></div></footer>
 </body>
 </html>
