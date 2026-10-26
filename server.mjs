@@ -35,13 +35,14 @@ const emailFrom = process.env.TERA_EMAIL_FROM || '';
 const publicUrl = (process.env.TERA_PUBLIC_URL || '').replace(/\/$/, '');
 const recoveryReady = Boolean(resendKey && emailFrom && /^https:\/\//i.test(publicUrl));
 const resendEndpoint = (process.env.NODE_ENV === 'test' && process.env.TERA_TEST_RESEND_URL) ? process.env.TERA_TEST_RESEND_URL : 'https://api.resend.com/emails';
-const uploadDir = path.join(process.env.TERA_DATA_DIR ? path.resolve(process.env.TERA_DATA_DIR) : path.join(root, 'data'), 'private_images');
+const defaultDataDir = process.env.VERCEL ? '/tmp/data' : path.join(root, 'data');
+const dataDir = process.env.TERA_DATA_DIR ? path.resolve(process.env.TERA_DATA_DIR) : defaultDataDir;
+const uploadDir = path.join(dataDir, 'private_images');
 fs.mkdirSync(uploadDir, { recursive: true, mode: 0o700 });
+fs.mkdirSync(dataDir, { recursive: true, mode: 0o700 });
 const statusCooldown = new Map();
 const paymentReady = Boolean(serverKey && Number.isSafeInteger(fee) && fee >= 1000);
 const pub = path.join(root, 'public');
-const dataDir = process.env.TERA_DATA_DIR ? path.resolve(process.env.TERA_DATA_DIR) : path.join(root, 'data');
-fs.mkdirSync(dataDir, { recursive: true, mode: 0o700 });
 const db = new DatabaseSync(path.join(dataDir, 'tera_public.db'));
 db.exec(`PRAGMA journal_mode=WAL;
 CREATE TABLE IF NOT EXISTS applications (
