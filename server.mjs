@@ -37,6 +37,8 @@ const recoveryReady = Boolean(resendKey && emailFrom && /^https:\/\//i.test(publ
 const resendEndpoint = (process.env.NODE_ENV === 'test' && process.env.TERA_TEST_RESEND_URL) ? process.env.TERA_TEST_RESEND_URL : 'https://api.resend.com/emails';
 const defaultDataDir = process.env.VERCEL ? '/tmp/data' : path.join(root, 'data');
 const dataDir = process.env.TERA_DATA_DIR ? path.resolve(process.env.TERA_DATA_DIR) : defaultDataDir;
+// Vercel serverless demo mode notice
+if (process.env.VERCEL && process.env.NODE_ENV !== 'test') { console.warn('Tera running in Vercel preview mode with /tmp ephemeral storage.'); }
 const uploadDir = path.join(dataDir, 'private_images');
 fs.mkdirSync(uploadDir, { recursive: true, mode: 0o700 });
 fs.mkdirSync(dataDir, { recursive: true, mode: 0o700 });
@@ -60,7 +62,18 @@ CREATE TABLE IF NOT EXISTS recovery_requests (
  token_hash TEXT PRIMARY KEY, email TEXT NOT NULL, created_at INTEGER NOT NULL,
  expires_at INTEGER NOT NULL, consumed_at INTEGER
 );
-CREATE INDEX IF NOT EXISTS idx_recovery_email ON recovery_requests(email);`);
+CREATE INDEX IF NOT EXISTS idx_recovery_email ON recovery_requests(email);
+CREATE TABLE IF NOT EXISTS account_login_links (
+ token_hash TEXT PRIMARY KEY, email TEXT NOT NULL, created_at INTEGER NOT NULL,
+ expires_at INTEGER NOT NULL, consumed_at INTEGER
+);
+CREATE INDEX IF NOT EXISTS idx_account_login_email ON account_login_links(email);
+CREATE TABLE IF NOT EXISTS account_sessions (
+ token_hash TEXT PRIMARY KEY, email TEXT NOT NULL, created_at INTEGER NOT NULL,
+ expires_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_account_session_email ON account_sessions(email);
+CREATE INDEX IF NOT EXISTS idx_app_email ON applications(email,created_at);`);
 const columns = db.prepare('PRAGMA table_info(applications)').all().map(c => c.name);
 if (!columns.includes('image_file')) db.exec("ALTER TABLE applications ADD COLUMN image_file TEXT NOT NULL DEFAULT ''");
 
@@ -137,6 +150,43 @@ function allowedOrigin(req) {
   if (!o) return true; // non-browser clients and Midtrans webhook have no Origin
   try { const u = new URL(o); return u.host === req.headers.host && (u.protocol === 'http:' || u.protocol === 'https:'); }
   catch { return false; }
+}
+
+// Verified email account. Passwordless link + rotating opaque HttpOnly cookie.
+const ACCOUNT_TTL = 7 * 24 * 60 * 60 * 1000;
+const accountReady = recoveryReady;
+const sessionCookie = 'tera_account';
+function sessionEmail(req) {
+  const cookies = String(req.headers.cookie || '').split(';').map(c => c.trim());
+  const entry = cookies.find(c => c.startsWith(sessionCookie + '='));
+  const raw = entry ? entry.slice(sessionCookie.length + 1) : '';
+  if (!/^[A-Za-z0-9_-]{40,100}$/.test(raw)) return null;
+  const entryDb = db.prepare('SELECT email,expires_at FROM account_sessions WHERE token_hash=?').get(sha(raw));
+  if (!entryDb || entryDb.expires_at <= Date.now()) return null;
+  return entryDb.email;
+}
+function setAccountCookie(res, token, expiresMs) {
+  const secure = /^https:\/\//.test(publicUrl) && process.env.NODE_ENV !== 'test' ? '; Secure' : '';
+  res.setHeader('Set-Cookie', `${sessionCookie}=${token}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${Math.floor(expiresMs/1000)}${secure}`);
+}
+function clearAccountCookie(res) {
+  const secure = /^https:\/\//.test(publicUrl) && process.env.NODE_ENV !== 'test' ? '; Secure' : '';
+  res.setHeader('Set-Cookie', `${sessionCookie}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0${secure}`);
+}
+async function sendAccountLogin(email, token) {
+  const link = `${publicUrl}/account.html#verify/${token}`;
+  const html = `<div style="max-width:560px;margin:auto;font-family:Arial,sans-serif;color:#193a2d;padding:32px"><p style="font-weight:bold;letter-spacing:.15em">TERA / CUSTOMER PORTAL</p><h1>Masuk ke ruang produkmu</h1><p>Gunakan tautan di bawah untuk masuk ke akun Tera. Berlaku 15 menit, sekali pakai.</p><p><a href="${link}" style="display:inline-block;background:#193a2d;color:white;padding:14px 24px;border-radius:8px">Masuk ke Tera</a></p><p>Jika kamu tidak meminta ini, abaikan email ini. Jangan bagikan tautannya.</p><small>Tera adalah layanan independen, bukan situs resmi BPOM.</small></div>`;
+  const reply = await fetch(resendEndpoint, {
+    method:'POST', signal:AbortSignal.timeout(7500),
+    headers:{Authorization:`Bearer ${resendKey}`,'Content-Type':'application/json'},
+    body:JSON.stringify({from:emailFrom,to:[email],subject:'Masuk ke akun Tera — tautan aman',html})
+  });
+  if (!reply.ok) throw new Error('Email delivery failed: ' + reply.status);
+}
+function accountList(email) {
+  return db.prepare(`SELECT id,company,product,category,amount,payment_status AS paymentStatus,
+    review_status AS reviewStatus, created_at AS createdAt,updated_at AS updatedAt
+    FROM applications WHERE email=? ORDER BY created_at DESC LIMIT 150`).all(email);
 }
 function customerView(row) {
   const paid = row.payment_status === 'paid';
@@ -265,6 +315,67 @@ const server = http.createServer(async (req, res) => {
     if (route.startsWith('/api/') && req.method === 'OPTIONS') return fail(res, 405, 'Tidak diizinkan.');
     if (route.startsWith('/api/') && !allowedOrigin(req)) return fail(res, 403, 'Origin tidak sesuai.');
 
+
+    // CUSTOMER ACCOUNT — all billing is still exclusively handled by Midtrans.
+    if (req.method === 'GET' && route === '/api/account/config') {
+      return json(res,200,{ok:true,loginEnabled:accountReady,provider:'email_magic_link',payments:'Midtrans Snap',sandbox:!live});
+    }
+    if (req.method === 'POST' && route === '/api/account/login/request') {
+      if (!applyRate(req,res,'account-email',4)) return;
+      if (!accountReady) return fail(res,503,'Login email belum diaktifkan. Hubungi pengelola Tera.');
+      const body = await readBody(req);
+      const email = text(body?.email,200).toLowerCase();
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return fail(res,422,'Email tidak valid.');
+      const recent = db.prepare('SELECT COUNT(*) AS n FROM account_login_links WHERE email=? AND created_at>?').get(email,Date.now()-24*60*60*1000);
+      if (recent.n < 5) {
+        const token = crypto.randomBytes(32).toString('base64url');
+        const hashed = sha(token); const ts=Date.now();
+        db.prepare('INSERT INTO account_login_links(token_hash,email,created_at,expires_at) VALUES(?,?,?,?)').run(hashed,email,ts,ts+15*60*1000);
+        try { await sendAccountLogin(email,token); }
+        catch(e) { db.prepare('DELETE FROM account_login_links WHERE token_hash=?').run(hashed); console.warn('Account email delivery unavailable',String(e)); }
+      }
+      return json(res,202,{ok:true,message:'Jika email dapat menerima pesan, tautan masuk akan dikirim. Periksa inbox/spam.'});
+    }
+    if (req.method === 'POST' && route === '/api/account/login/redeem') {
+      if (!applyRate(req,res,'account-redeem',10)) return;
+      const b = await readBody(req);
+      if (!/^[A-Za-z0-9_-]{40,100}$/.test(b?.token||'')) return fail(res,400,'Tautan tidak valid.');
+      const ts=Date.now();
+      const claim=db.prepare('UPDATE account_login_links SET consumed_at=? WHERE token_hash=? AND consumed_at IS NULL AND expires_at>? RETURNING email').get(ts,sha(b.token),ts);
+      if (!claim) return fail(res,410,'Tautan telah digunakan atau kedaluwarsa. Minta tautan baru.');
+      const session=crypto.randomBytes(32).toString('base64url');
+      db.prepare('INSERT INTO account_sessions(token_hash,email,created_at,expires_at) VALUES(?,?,?,?)').run(sha(session),claim.email,ts,ts+ACCOUNT_TTL);
+      setAccountCookie(res,session,ACCOUNT_TTL);
+      return json(res,200,{ok:true,email:claim.email});
+    }
+    if (route.startsWith('/api/account/')) {
+      const email=sessionEmail(req);
+      if (!email) return fail(res,401,'Sesi berakhir. Masuk kembali melalui email.');
+      if (req.method === 'GET' && route === '/api/account/me') return json(res,200,{ok:true,email});
+      if (req.method === 'POST' && route === '/api/account/logout') {
+        const raw=String(req.headers.cookie||'').split(';').map(x=>x.trim()).find(x=>x.startsWith(sessionCookie+'='))?.slice(sessionCookie.length+1);
+        if (raw) db.prepare('DELETE FROM account_sessions WHERE token_hash=?').run(sha(raw));
+        clearAccountCookie(res);return json(res,200,{ok:true});
+      }
+      if (req.method === 'GET' && route === '/api/account/applications') {
+        if (!applyRate(req,res,'account-list',45)) return;
+        return json(res,200,{ok:true,data:accountList(email)});
+      }
+      const image=route.match(/^\/api\/account\/applications\/(TR-[A-Z0-9-]+)\/image$/);
+      if (req.method==='GET' && image) {
+        const row=db.prepare('SELECT * FROM applications WHERE id=? AND email=?').get(image[1],email);
+        return row?servePrivateImage(res,row):fail(res,404,'Lampiran tidak ditemukan.');
+      }
+      const detail=route.match(/^\/api\/account\/applications\/(TR-[A-Z0-9-]+)$/);
+      if (req.method==='GET' && detail) {
+        if (!applyRate(req,res,'account-detail',55)) return;
+        const row=db.prepare('SELECT * FROM applications WHERE id=? AND email=?').get(detail[1],email);
+        if (!row) return fail(res,404,'Pengajuan tidak ditemukan.');
+        const refreshed=await reconcilePayment(row);
+        return json(res,200,{...customerView(refreshed),category:refreshed.category,labelText:refreshed.label_text,nie:refreshed.nie,contact:refreshed.contact,updatedAt:refreshed.updated_at});
+      }
+      return fail(res,404,'Endpoint akun tidak ditemukan.');
+    }
     if (req.method === 'GET' && route === '/api/public/config') return json(res, 200, {
       ok: true, price: fee, currency: 'IDR', paymentEnabled: paymentReady,
       provider: 'Midtrans Snap', sandbox: !live,
@@ -278,6 +389,8 @@ const server = http.createServer(async (req, res) => {
       const b = await readBody(req);
       const [v, err] = validInput(b);
       if (err) return fail(res, 422, err);
+      const accountEmail=sessionEmail(req);
+      if (accountEmail && accountEmail!==v.email) return fail(res,422,'Email pengajuan harus sama dengan email akun yang sedang masuk.');
       const id = `TR-${new Date().toISOString().slice(0, 10).replace(/-/g, '')}-${crypto.randomBytes(5).toString('hex').toUpperCase()}`;
       const token = crypto.randomBytes(32).toString('base64url');
       const created = now();
@@ -444,7 +557,7 @@ const server = http.createServer(async (req, res) => {
     if (pathname === '/') pathname = '/index.html';
     // Restrict public assets: old role-based dashboard JS and its demo users
     // still exist in repository but must NOT be exposed by the public server.
-    const publicAssets = new Set(['/index.html', '/public.css', '/public.js', '/favicon.svg', '/staff.html', '/staff.css', '/staff.js']);
+    const publicAssets = new Set(['/index.html', '/public.css', '/public.js', '/favicon.svg', '/staff.html', '/staff.css', '/staff.js', '/account.html', '/account.css', '/account.js']);
     if (!publicAssets.has(pathname)) return fail(res, 404, 'Tidak ditemukan.');
     const resolved = path.resolve(pub, '.' + pathname);
     if (!resolved.startsWith(pub + path.sep)) return fail(res, 403, 'Dilarang.');

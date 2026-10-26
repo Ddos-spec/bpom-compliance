@@ -45,7 +45,7 @@ menuButton.addEventListener('click',()=>{const open=menuButton.getAttribute('ari
 $('mainNav').addEventListener('click',e=>{if(e.target.closest('a'))closeMenu();});
 document.addEventListener('keydown',e=>{if(e.key==='Escape')closeMenu();});
 
-function updateDashboardLink(){ $('dashboardLink').href=currentPrivateHash?`#${currentPrivateHash}`:'#track'; }
+function updateDashboardLink(){ /* Dashboard pelanggan ada di /account.html; tautan privat tetap tersedia sebagai opsi. */ }
 function route(){
   let hash=location.hash.slice(1)||'home';
   try{hash=decodeURIComponent(hash);}catch{hash='home';}
@@ -193,4 +193,9 @@ async function showStatus(id,token){
     root.innerHTML=`<div class="empty-report"><span class="empty-report-icon">!</span><h4>Dashboard belum dapat dibuka.</h4><p>${escapeHtml(err.message)} Periksa tautan lengkapmu, atau coba beberapa saat lagi.</p><div class="report-payment-action"><a class="btn btn-outline" href="#track">Masukkan tautan lain ↗</a></div></div>`;
   }
 }
-loadConfig();route();
+async function syncCustomerAccount(){
+  try{const r=await api('/api/account/me');const field=$('email');
+    if(r.email&&field){field.value=r.email;field.readOnly=true;field.title='Email terverifikasi dari akun pelanggan. Keluar dari akun untuk menggunakan email lain.';}
+  }catch{/* Guest may submit without an account. */}
+}
+loadConfig();syncCustomerAccount();route();
