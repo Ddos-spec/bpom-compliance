@@ -63,15 +63,11 @@ try{
  assert.equal(database.prepare('SELECT COUNT(*) AS count FROM applications').get().count,1);
  database.close();check('gateway failure leaves no orphan application',()=>{});
  console.log('PASS EDGE:',checks.join('; '));
-} finally {
-  proc.kill();
-  gateway.close();
-  await new Promise(r => {
+} finally {proc.kill();gateway.close();await new Promise(r => {
     if (proc.exitCode !== null) return r();
     proc.once('exit', () => r());
     setTimeout(r, 1000);
   });
   try {
     fs.rmSync(tmp, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
-  } catch {}
-}
+  } catch {}}

@@ -30,6 +30,13 @@ const statusEndpoint = (process.env.NODE_ENV === 'test' && process.env.MIDTRANS_
   ? process.env.MIDTRANS_STATUS_URL
   : (live ? 'https://api.midtrans.com/v2/' : 'https://api.sandbox.midtrans.com/v2/');
 const adminKey = process.env.TERA_ADMIN_KEY || '';
+const resendKey = process.env.RESEND_API_KEY || '';
+const emailFrom = process.env.TERA_EMAIL_FROM || '';
+const publicUrl = (process.env.TERA_PUBLIC_URL || '').replace(/\/$/, '');
+const recoveryReady = Boolean(resendKey && emailFrom && /^https:\/\//i.test(publicUrl));
+const resendEndpoint = (process.env.NODE_ENV === 'test' && process.env.TERA_TEST_RESEND_URL) ? process.env.TERA_TEST_RESEND_URL : 'https://api.resend.com/emails';
+const uploadDir = path.join(process.env.TERA_DATA_DIR ? path.resolve(process.env.TERA_DATA_DIR) : path.join(root, 'data'), 'private_images');
+fs.mkdirSync(uploadDir, { recursive: true, mode: 0o700 });
 const statusCooldown = new Map();
 const paymentReady = Boolean(serverKey && Number.isSafeInteger(fee) && fee >= 1000);
 const pub = path.join(root, 'public');
@@ -47,7 +54,14 @@ CREATE TABLE IF NOT EXISTS applications (
  snap_url TEXT NOT NULL DEFAULT '', report_json TEXT,
  staff_note TEXT NOT NULL DEFAULT '', created_at TEXT NOT NULL, updated_at TEXT NOT NULL
 );
-CREATE INDEX IF NOT EXISTS idx_tera_created ON applications(created_at);`);
+CREATE INDEX IF NOT EXISTS idx_tera_created ON applications(created_at);
+CREATE TABLE IF NOT EXISTS recovery_requests (
+ token_hash TEXT PRIMARY KEY, email TEXT NOT NULL, created_at INTEGER NOT NULL,
+ expires_at INTEGER NOT NULL, consumed_at INTEGER
+);
+CREATE INDEX IF NOT EXISTS idx_recovery_email ON recovery_requests(email);`);
+const columns = db.prepare('PRAGMA table_info(applications)').all().map(c => c.name);
+if (!columns.includes('image_file')) db.exec("ALTER TABLE applications ADD COLUMN image_file TEXT NOT NULL DEFAULT ''");
 
 const MIME = { '.html': 'text/html; charset=utf-8', '.css': 'text/css; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.svg': 'image/svg+xml', '.woff2': 'font/woff2' };
 const rate = new Map();
@@ -58,7 +72,7 @@ const json = (res, code, data) => {
   res.end(JSON.stringify(data));
 };
 const fail = (res, code, error) => json(res, code, { ok: false, error });
-const LIMIT = 40_000;
+const LIMIT = 3_500_000; // encrypted private photo up to 2 MB before base64 encoding
 function readBody(req) {
   return new Promise((resolve, reject) => {
     let n = 0; const chunks = [];
@@ -75,17 +89,36 @@ function readBody(req) {
   });
 }
 function text(x, max) { return typeof x === 'string' ? x.trim().slice(0, max) : ''; }
+// File type verified against magic bytes. Never trust client MIME or filename.
+function decodeLabelImage(raw) {
+  const m = /^data:image\/(jpeg|png|webp);base64,([A-Za-z0-9+/]+={0,2})$/.exec(raw);
+  if (!m || m[2].length > 2_800_000) return null;
+  const buf = Buffer.from(m[2], 'base64');
+  if (!buf.length || buf.length > 2 * 1024 * 1024 || buf.toString('base64') !== m[2]) return null;
+  const bytes = (hex) => buf.subarray(0, hex.length / 2).toString('hex') === hex;
+  const jpeg = bytes('ffd8ff');
+  const png = bytes('89504e470d0a1a0a');
+  const webp = buf.length > 12 && buf.toString('ascii',0,4)==='RIFF' && buf.toString('ascii',8,12)==='WEBP';
+  if ((m[1]==='jpeg' && jpeg) || (m[1]==='png' && png) || (m[1]==='webp' && webp)) return { data: buf, ext: m[1]==='jpeg'?'jpg':m[1], mime: `image/${m[1]}` };
+  return null;
+}
 function validInput(b) {
   if (!b || typeof b !== 'object' || Array.isArray(b)) return [null, 'Format pengajuan tidak valid.'];
   const v = {
     company: text(b.company, 120), contact: text(b.contact, 120), email: text(b.email, 200).toLowerCase(),
     phone: text(b.phone, 30), product: text(b.product, 140), category: text(b.category, 90),
-    label_text: text(b.labelText, 16000), nie: text(b.nie, 45), consent: b.consent === true
+    label_text: text(b.labelText, 16000), nie: text(b.nie, 45), consent: b.consent === true,
+    labelImage: typeof b.labelImage === 'string' ? b.labelImage : ''
   };
   if ([v.company, v.contact, v.product, v.category].some(s => s.length < 2)) return [null, 'Isi identitas usaha, kontak, kategori dan nama produk.'];
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v.email) || !/^[+0-9\s()\-]{8,30}$/.test(v.phone)) return [null, 'Email atau nomor telepon tidak valid.'];
   if (v.label_text.length < 30) return [null, 'Salin teks label minimal 30 karakter agar bisa dievaluasi.'];
   if (!v.consent) return [null, 'Persetujuan pemrosesan data diperlukan.'];
+  if (v.labelImage) {
+    const img = decodeLabelImage(v.labelImage);
+    if (!img) return [null, 'Gambar label harus JPEG, PNG, atau WebP maksimal 2 MB.'];
+    v.image = img;
+  }
   return [v, null];
 }
 function applyRate(req, res, scope, limit) {
@@ -110,7 +143,7 @@ function customerView(row) {
     ok: true, id: row.id, company: row.company, product: row.product, amount: row.amount,
     paymentStatus: row.payment_status, reviewStatus: paid ? row.review_status : 'awaiting_payment',
     checkoutUrl: row.payment_status === 'pending' ? row.snap_url : '',
-    createdAt: row.created_at, note: paid ? row.staff_note : '',
+    createdAt: row.created_at, imageAvailable: Boolean(row.image_file), note: paid ? row.staff_note : '',
     report: paid && row.report_json ? JSON.parse(row.report_json) : null
   };
 }
@@ -203,6 +236,27 @@ async function reconcilePayment(row) {
   return row;
 }
 
+function validCustomer(req, id) {
+  const token = (req.headers.authorization || '').replace(/^Bearer /, '');
+  if (!/^[A-Za-z0-9_-]{40,100}$/.test(token)) return null;
+  const row = db.prepare('SELECT * FROM applications WHERE id=?').get(id);
+  if (!row) return null;
+  return crypto.timingSafeEqual(Buffer.from(row.token_hash, 'hex'), Buffer.from(sha(token), 'hex')) ? row : null;
+}
+function servePrivateImage(res, row) {
+  if (!row.image_file || !/^[A-Za-z0-9-]+\-[a-f0-9]{16}\.(jpg|png|webp)$/.test(row.image_file)) return fail(res, 404, 'Foto tidak tersedia.');
+  const imagePath = path.join(uploadDir, row.image_file);
+  const mime = row.image_file.endsWith('.jpg') ? 'image/jpeg' : row.image_file.endsWith('.png') ? 'image/png' : 'image/webp';
+  fs.readFile(imagePath, (e, buf) => {
+    if (e) return fail(res, 404, 'Foto tidak tersedia.');
+    res.writeHead(200, {'Content-Type':mime,'Cache-Control':'private, no-store','X-Content-Type-Options':'nosniff','Content-Disposition':'inline','Referrer-Policy':'no-referrer'});
+    res.end(buf);
+  });
+}
+function emailHtml(items) {
+  const list = items.map(item => `<li>${item}</li>`).join('');
+  return `<div style="font-family:system-ui,sans-serif;max-width:540px;margin:30px auto;color:#1e3029"><h1>Tera · Pulihkan akses</h1><p>Permintaan akses ke pengajuan Tera telah diterima. Klik tautan berikut dalam 15 menit:</p><ul>${list}</ul><p>Jika kamu tidak meminta ini, abaikan email ini.</p><small>Layanan independen, bukan sistem resmi BPOM.</small></div>`;
+}
 const server = http.createServer(async (req, res) => {
   try {
     const url = new URL(req.url || '/', 'http://localhost');
@@ -213,6 +267,7 @@ const server = http.createServer(async (req, res) => {
     if (req.method === 'GET' && route === '/api/public/config') return json(res, 200, {
       ok: true, price: fee, currency: 'IDR', paymentEnabled: paymentReady,
       provider: 'Midtrans Snap', sandbox: !live,
+      recoveryEnabled: recoveryReady, maxImageBytes: 2097152,
       scope: 'Pemeriksaan awal label pangan olahan, bukan pembayaran resmi BPOM.'
     });
 
@@ -227,6 +282,19 @@ const server = http.createServer(async (req, res) => {
       const created = now();
       db.prepare(`INSERT INTO applications (id,token_hash,company,contact,email,phone,product,category,label_text,nie,consent,amount,created_at,updated_at)
         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(id, sha(token), v.company, v.contact, v.email, v.phone, v.product, v.category, v.label_text, v.nie, 1, fee, created, created);
+      let storedImage = '';
+      if (v.image) {
+        try {
+          storedImage = `${id}-${crypto.randomBytes(8).toString('hex')}.${v.image.ext}`;
+          fs.writeFileSync(path.join(uploadDir, storedImage), v.image.data, { flag: 'wx', mode: 0o600 });
+          db.prepare('UPDATE applications SET image_file=? WHERE id=?').run(storedImage, id);
+        } catch (e) {
+          if (storedImage) fs.rmSync(path.join(uploadDir, storedImage), { force: true });
+          db.prepare('DELETE FROM applications WHERE id=?').run(id);
+          console.error('Private image storage failed', id, e.message);
+          return fail(res, 503, 'Foto tidak dapat disimpan. Pengajuan belum dibuat. Silakan coba lagi.');
+        }
+      }
 
       // Amount is always generated on the server. No fake/manual 'mark as paid'.
       const basic = Buffer.from(serverKey + ':').toString('base64');
@@ -253,21 +321,78 @@ const server = http.createServer(async (req, res) => {
         console.error('Checkout creation failed', id, String(e));
         // Never accumulate inaccessible unpaid applications when gateway creation fails.
         db.prepare("DELETE FROM applications WHERE id=? AND payment_status='pending' AND snap_url=''").run(id);
+        if (storedImage) fs.rmSync(path.join(uploadDir, storedImage), { force: true });
         return fail(res, 502, 'Gateway pembayaran belum merespons. Pengajuan belum dibuat, silakan coba lagi.');
       }
       return json(res, 201, { ok: true, id, accessToken: token, checkoutUrl, amount: fee, paymentStatus: 'pending' });
     }
 
+    // Magic-link recovery: email proof, 15-minute one-time token, rotated customer tokens.
+    if (req.method === 'POST' && route === '/api/public/recovery/request') {
+      if (!applyRate(req, res, 'recover', 3)) return;
+      if (!recoveryReady) return fail(res, 503, 'Pemulihan email belum diaktifkan.');
+      const b = await readBody(req);
+      const email = text(b?.email, 200).toLowerCase();
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return fail(res, 422, 'Alamat email tidak valid.');
+      const exists = db.prepare('SELECT 1 FROM applications WHERE email=? LIMIT 1').get(email);
+      if (exists) {
+        const recent = db.prepare('SELECT count(*) as n FROM recovery_requests WHERE email=? AND created_at>?').get(email,Date.now()-24*60*60*1000);
+        if (recent.n < 5) {
+          const token = crypto.randomBytes(32).toString('base64url');
+          const hashed = sha(token);
+          const stamp = Date.now();
+          db.prepare('INSERT INTO recovery_requests(token_hash,email,created_at,expires_at) VALUES(?,?,?,?)').run(hashed,email,stamp,stamp+15*60*1000);
+          const link = `${publicUrl}/#recovery/${token}`;
+          try {
+            const sent = await fetch(resendEndpoint,{
+              method:'POST', signal:AbortSignal.timeout(7500),
+              headers:{Authorization:`Bearer ${resendKey}`,'Content-Type':'application/json'},
+              body:JSON.stringify({from:emailFrom,to:[email],subject:'Tera — pulihkan akses pengajuan',html:emailHtml([`<a href="${link}">Pulihkan akses Tera</a>`])})
+            });
+            if (!sent.ok) {db.prepare('DELETE FROM recovery_requests WHERE token_hash=?').run(hashed);console.warn('Recovery delivery failed',sent.status);}
+          } catch (e) {db.prepare('DELETE FROM recovery_requests WHERE token_hash=?').run(hashed);console.warn('Recovery email unavailable');}
+        }
+      }
+      // Always same response, prevent account/email enumeration.
+      return json(res, 202, {ok:true, message:'Jika email tersebut terdaftar, tautan pemulihan akan dikirim.'});
+    }
+    if (req.method === 'POST' && route === '/api/public/recovery/redeem') {
+      if (!applyRate(req, res, 'redeem', 8)) return;
+      const b = await readBody(req);
+      if (!/^[A-Za-z0-9_-]{40,100}$/.test(b?.token || '')) return fail(res, 400, 'Tautan pemulihan tidak valid.');
+      const hashed = sha(b.token), stamp = Date.now();
+      const claim = db.prepare('UPDATE recovery_requests SET consumed_at=? WHERE token_hash=? AND consumed_at IS NULL AND expires_at>? RETURNING email').get(stamp,hashed,stamp);
+      if (!claim) return fail(res, 410, 'Tautan kedaluwarsa atau sudah digunakan.');
+      const rows = db.prepare('SELECT id, product, payment_status FROM applications WHERE email=? ORDER BY created_at DESC LIMIT 100').all(claim.email);
+      const result = [];
+      // Issue new access tokens only AFTER successful email proof; invalidate all previous links.
+      db.exec('BEGIN IMMEDIATE');
+      try {
+        for (const row of rows) {
+          const newToken = crypto.randomBytes(32).toString('base64url');
+          db.prepare('UPDATE applications SET token_hash=?, updated_at=? WHERE id=?').run(sha(newToken), now(), row.id);
+          result.push({ id:row.id,product:row.product,paymentStatus:row.payment_status,accessToken:newToken });
+        }
+        db.exec('COMMIT');
+      } catch (e) {db.exec('ROLLBACK');throw e;}
+      return json(res, 200, {ok:true, applications:result});
+    }
+
     const status = route.match(/^\/api\/public\/applications\/(TR-[A-Z0-9-]+)$/);
     if (req.method === 'GET' && status) {
       if (!applyRate(req, res, 'track', 60)) return;
-      const token = (req.headers.authorization || '').replace(/^Bearer /, '');
-      if (!/^[A-Za-z0-9_-]{40,100}$/.test(token)) return fail(res, 401, 'Token pelacakan tidak valid.');
-      const row = db.prepare('SELECT * FROM applications WHERE id=?').get(status[1]);
-      if (!row || !crypto.timingSafeEqual(Buffer.from(row.token_hash, 'hex'), Buffer.from(sha(token), 'hex'))) return fail(res, 404, 'Pengajuan tidak ditemukan.');
+      const row = validCustomer(req, status[1]);
+      if (!row) return fail(res, 404, 'Pengajuan tidak ditemukan.');
       return json(res, 200, customerView(await reconcilePayment(row)));
     }
 
+    const imageRoute = route.match(/^\/api\/public\/applications\/(TR-[A-Z0-9-]+)\/image$/);
+    if (req.method === 'GET' && imageRoute) {
+      if (!applyRate(req, res, 'image', 60)) return;
+      const row = validCustomer(req, imageRoute[1]);
+      if (!row) return fail(res, 404, 'Tidak ditemukan.');
+      return servePrivateImage(res, row);
+    }
     if (req.method === 'POST' && route === '/api/payments/midtrans/notification') {
       if (!serverKey) return fail(res, 503, 'Pembayaran belum aktif.');
       const b = await readBody(req);
@@ -284,11 +409,17 @@ const server = http.createServer(async (req, res) => {
         const rows = db.prepare('SELECT id, company, contact, email, phone, product, category, amount, payment_status, review_status, created_at FROM applications ORDER BY created_at DESC LIMIT 100').all();
         return json(res, 200, { ok: true, data: rows });
       }
+      const staffImage = route.match(/^\/api\/staff\/applications\/(TR-[A-Z0-9-]+)\/image$/);
+      if (req.method === 'GET' && staffImage) {
+        const row = db.prepare('SELECT * FROM applications WHERE id=?').get(staffImage[1]);
+        return row ? servePrivateImage(res,row) : fail(res,404,'Tidak ditemukan.');
+      }
       const m = route.match(/^\/api\/staff\/applications\/(TR-[A-Z0-9-]+)$/);
       if (m && req.method === 'GET') {
         const r = db.prepare('SELECT * FROM applications WHERE id=?').get(m[1]);
         if (!r) return fail(res, 404, 'Tidak ditemukan.');
-        const { token_hash, snap_url, ...rest } = r;
+        const { token_hash, snap_url, image_file, ...rest } = r;
+        rest.imageAvailable = Boolean(image_file);
         return json(res, 200, { ok: true, data: rest });
       }
       if (m && req.method === 'PATCH') {
@@ -312,7 +443,7 @@ const server = http.createServer(async (req, res) => {
     if (pathname === '/') pathname = '/index.html';
     // Restrict public assets: old role-based dashboard JS and its demo users
     // still exist in repository but must NOT be exposed by the public server.
-    const publicAssets = new Set(['/index.html', '/public.css', '/public.js', '/favicon.svg']);
+    const publicAssets = new Set(['/index.html', '/public.css', '/public.js', '/favicon.svg', '/staff.html', '/staff.css', '/staff.js']);
     if (!publicAssets.has(pathname)) return fail(res, 404, 'Tidak ditemukan.');
     const resolved = path.resolve(pub, '.' + pathname);
     if (!resolved.startsWith(pub + path.sep)) return fail(res, 403, 'Dilarang.');
@@ -322,7 +453,7 @@ const server = http.createServer(async (req, res) => {
       res.writeHead(200, {
         'Content-Type': type, 'X-Content-Type-Options': 'nosniff',
         'Referrer-Policy': 'no-referrer', 'X-Frame-Options': 'DENY', 'Permissions-Policy': 'camera=(), microphone=(), geolocation=()',
-        'Content-Security-Policy': "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'", 
+        'Content-Security-Policy': "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: blob:; connect-src 'self'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'",  
         'Cache-Control': type.includes('html') ? 'no-store' : 'public, max-age=3600'
       });
       if (req.method === 'HEAD') res.end(); else res.end(buf);

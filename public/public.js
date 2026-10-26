@@ -2,8 +2,8 @@
 const $ = id => document.getElementById(id);
 const money = n => new Intl.NumberFormat('id-ID',{style:'currency',currency:'IDR',maximumFractionDigits:0}).format(n);
 const escapeHtml = s => String(s ?? '').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-const config={price:0,paymentEnabled:false,sandbox:true};
-let currentPrivateHash=''; let lastStatusPath=''; let submitting=false;
+const config={price:0,paymentEnabled:false,sandbox:true,recoveryEnabled:false};
+let currentPrivateHash=''; let lastStatusPath=''; let lastRecoveryPath=''; let submitting=false; let customerImageUrl='';
 $('year').textContent=String(new Date().getFullYear());
 
 async function api(endpoint,opts={}){
@@ -15,6 +15,7 @@ async function api(endpoint,opts={}){
 async function loadConfig(){
   try{
     Object.assign(config,await api('/api/public/config'));
+    $('recoveryPanel').hidden=!config.recoveryEnabled;
     $('priceValue').textContent=money(config.price);
     $('formPrice').textContent=money(config.price);
     $('priceHint').textContent=config.paymentEnabled?(config.sandbox?'Mode sandbox aktif. Pembayaran hanya untuk pengujian.':'Checkout online tersedia melalui penyedia pembayaran.'):'Checkout belum diaktifkan pengelola.';
@@ -49,17 +50,19 @@ function route(){
   let hash=location.hash.slice(1)||'home';
   try{hash=decodeURIComponent(hash);}catch{hash='home';}
   const status=/^status\/(TR-[A-Z0-9-]+)\/([A-Za-z0-9_-]{40,100})$/.exec(hash);
-  const isForm=hash==='apply'; const isTracking=hash==='track'||Boolean(status);
+  const recovery=/^recovery\/([A-Za-z0-9_-]{40,100})$/.exec(hash);
+  const isForm=hash==='apply'; const isTracking=hash==='track'||Boolean(status)||Boolean(recovery);
   $('homeView').hidden=isForm||isTracking;
   $('applyView').hidden=!isForm;
   $('trackView').hidden=!isTracking;
-  $('trackEntry').hidden=Boolean(status);
-  $('trackCard').hidden=!status;
+  $('trackEntry').hidden=Boolean(status)||Boolean(recovery);
+  $('trackCard').hidden=!status&&!recovery;
   if(status){
     currentPrivateHash=hash;updateDashboardLink();
     const key=`${status[1]}/${status[2]}`;
     if(lastStatusPath!==key){lastStatusPath=key;showStatus(status[1],status[2]);}
   }else{lastStatusPath='';}
+  if(recovery && lastRecoveryPath!==recovery[1]){lastRecoveryPath=recovery[1];redeemRecovery(recovery[1]);}
   if(['how','features','price','faq'].includes(hash)){
     $('homeView').hidden=false;
     requestAnimationFrame(()=>document.getElementById(hash)?.scrollIntoView({behavior:window.matchMedia('(prefers-reduced-motion: reduce)').matches?'instant':'smooth'}));
@@ -81,14 +84,25 @@ function showStep(n){
 function failForm(message){$('formError').textContent=message;$('formError').hidden=false;$('formError').scrollIntoView({block:'nearest'});}
 $('nextStep').addEventListener('click',()=>{for(const field of $('step1').querySelectorAll('input'))if(!field.reportValidity())return;showStep(2);});
 $('prevStep').addEventListener('click',()=>showStep(1));
+$('labelImage').addEventListener('change',()=>{
+  const file=$('labelImage').files[0];
+  const preview=$('imagePreview');preview.hidden=!file;preview.replaceChildren();
+  if(file){const label=document.createElement('span');label.textContent=`${file.name} · ${(file.size/1024/1024).toFixed(2)} MB`;preview.append(label);
+    if(file.size>2*1024*1024){label.textContent='Ukuran foto melebihi 2 MB. Pilih foto lebih kecil.';return;}
+    const img=document.createElement('img');img.alt='Pratinjau foto label';img.src=URL.createObjectURL(file);img.onload=()=>URL.revokeObjectURL(img.src);preview.append(img);}
+});
+function fileDataUrl(file){return new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(reader.result);reader.onerror=()=>reject(new Error('Foto tidak dapat dibaca.'));reader.readAsDataURL(file);});}
 $('labelText').addEventListener('input',()=>{$('textCount').textContent=`${$('labelText').value.length.toLocaleString('id-ID')} / 16.000`;});
 form.addEventListener('submit',async e=>{
   e.preventDefault();
   if(submitting||!config.paymentEnabled)return;
   if(!form.reportValidity())return;
-  const f=new FormData(form);const payload=Object.fromEntries(f.entries());payload.consent=f.get('consent')==='on';
+  const f=new FormData(form);const payload=Object.fromEntries(f.entries());payload.consent=f.get('consent')==='on';delete payload.labelImage;
   submitting=true;$('submitForm').disabled=true;$('submitForm').textContent='Membuat pengajuan…';$('formError').hidden=true;
   try{
+    const file=$('labelImage').files[0];
+    if(file){if(file.size>2*1024*1024||!['image/jpeg','image/png','image/webp'].includes(file.type))throw new Error('Pilih JPEG, PNG, atau WebP maksimal 2 MB.');
+      payload.labelImage=await fileDataUrl(file);}
     const result=await api('/api/public/applications',{method:'POST',body:JSON.stringify(payload)});
     if(!/^TR-[A-Z0-9-]+$/.test(result.id)||!/^[A-Za-z0-9_-]{40,100}$/.test(result.accessToken))throw new Error('Format tanda terima tidak valid.');
     const privateHash=`status/${result.id}/${result.accessToken}`;
@@ -105,6 +119,18 @@ $('trackForm').addEventListener('submit',e=>{
   }catch(err){$('trackError').textContent=err.message;$('trackError').hidden=false;}
 });
 
+$('recoveryForm').addEventListener('submit',async e=>{
+  e.preventDefault();const note=$('recoveryMessage');const button=$('recoveryForm').querySelector('button');
+  button.disabled=true;note.textContent='Memproses permintaan…';
+  try{const r=await api('/api/public/recovery/request',{method:'POST',body:JSON.stringify({email:$('recoveryEmail').value})});note.textContent=r.message;}
+  catch(err){note.textContent=err.message;}finally{button.disabled=false;}
+});
+async function redeemRecovery(token){
+ const root=$('trackCard');root.innerHTML='<div class="empty-report"><h4>Memeriksa tautan pemulihan…</h4></div>';
+ try{const r=await api('/api/public/recovery/redeem',{method:'POST',body:JSON.stringify({token})});
+    root.innerHTML=`<section class="recovery-results"><h1>Aksesmu sudah dipulihkan.</h1><p>Berikut seluruh pengajuan yang terhubung dengan emailmu. <strong>Tautan lama kini tidak berlaku.</strong> Simpan tautan baru dengan aman.</p><div class="recover-cards">${r.applications.map(a=>`<a class="recover-card" href="#status/${escapeHtml(a.id)}/${escapeHtml(a.accessToken)}"><span>${escapeHtml(a.id)}</span><strong>${escapeHtml(a.product)}</strong><small>Lihat pengajuan ↗</small></a>`).join('')}</div></section>`;
+ }catch(err){root.innerHTML=`<div class="empty-report"><h4>Link pemulihan tidak berlaku</h4><p>${escapeHtml(err.message)}</p><a class="btn btn-outline" href="#track">Kembali ke pelacakan ↗</a></div>`;}
+}
 const paymentLabel={pending:'Menunggu pembayaran',paid:'Pembayaran terverifikasi',failed:'Pembayaran gagal / kedaluwarsa',refunded:'Dibatalkan / dikembalikan'};
 const reviewLabel={awaiting_payment:'Menunggu pembayaran',report_ready:'Laporan tersedia',in_review:'Sedang ditinjau',revision_requested:'Perlu revisi',completed:'Tindak lanjut selesai',on_hold:'Ditangguhkan'};
 const niceDate=raw=>{try{return new Date(raw).toLocaleDateString('id-ID',{day:'numeric',month:'long',year:'numeric'});}catch{return '—';}};
@@ -132,16 +158,22 @@ function workspaceHtml(s){
   <div class="workspace-main"><div class="workspace-eyebrow"><span></span> DASHBOARD / PENGAJUAN ${escapeHtml(s.id)}</div><h1 class="workspace-heading">Halo, ini ruang<br><em>pengajuanmu.</em></h1><p class="workspace-summary">Pantau persiapan <strong>${escapeHtml(s.product)}</strong> dari <strong>${escapeHtml(s.company)}</strong> tanpa kehilangan jejak langkah berikutnya.</p>
     <div class="workspace-toolbar">${checkoutButton}<button type="button" id="refreshStatus" class="btn btn-outline btn-slim">Perbarui status ↻</button><button type="button" id="copyTracking" class="btn btn-outline btn-slim">Salin tautan privat ↗</button>${paid?'<button type="button" id="printReport" class="btn btn-outline btn-slim">Cetak laporan ↗</button>':''}</div>
     <div class="workspace-metrics"><div class="work-metric"><div class="metric-kicker">STATUS PEMBAYARAN</div><strong>${escapeHtml(paymentLabel[s.paymentStatus]||'Dalam proses')}</strong><small>Nomor: ${escapeHtml(s.id)}</small></div><div class="work-metric"><div class="metric-kicker">STATUS PEMERIKSAAN</div><strong>${escapeHtml(reviewLabel[s.reviewStatus]||'Dalam proses')}</strong><small>${paid?'Hasil berdasarkan pemeriksaan awal':'Laporan dikunci sampai pembayaran valid'}</small></div><div class="work-metric"><div class="metric-kicker">ASPEK PEMERIKSAAN</div><strong class="metric-bignum">${paid?`${detected}<span class="metric-denominator"> / ${activeCount}</span>`:'—'}</strong><small>${paid?'Aspek terdeteksi dari checklist':'Tersedia setelah pembayaran'}</small></div></div>
-    <section class="work-section" id="work-overview"><div class="work-section-head"><h3>Perjalanan pengajuan</h3><span>TAHAPAN LAYANAN</span></div><div class="timeline">${steps.map(t=>`<div class="timeline-step ${t.done?'done':t.current?'current':''}"><div class="timeline-step-top"><span>${t.n}</span><span class="timeline-dot">${t.done?'✓':t.current?'•':''}</span></div><strong>${escapeHtml(t.label)}</strong><p>${escapeHtml(t.desc)}</p></div>`).join('')}</div>${note}<div class="work-info-note">Pengajuan dibuat ${escapeHtml(niceDate(s.createdAt))}. Pemeriksaan Tera adalah layanan independen; hasil tidak berarti suatu produk sudah mendapatkan persetujuan BPOM.</div></section>
+    <section class="work-section" id="work-overview"><div class="work-section-head"><h3>Perjalanan pengajuan</h3><span>TAHAPAN LAYANAN</span></div><div class="timeline">${steps.map(t=>`<div class="timeline-step ${t.done?'done':t.current?'current':''}"><div class="timeline-step-top"><span>${t.n}</span><span class="timeline-dot">${t.done?'✓':t.current?'•':''}</span></div><strong>${escapeHtml(t.label)}</strong><p>${escapeHtml(t.desc)}</p></div>`).join('')}</div>${s.imageAvailable?'<div class="customer-image-wrap"><strong>Foto label terlampir</strong><p>Dokumen privat yang kamu unggah, bukan hasil OCR.</p><img id="customerLabelImage" alt="Foto label produk yang diunggah"></div>':''}${note}<div class="work-info-note">Pengajuan dibuat ${escapeHtml(niceDate(s.createdAt))}. Pemeriksaan Tera adalah layanan independen; hasil tidak berarti suatu produk sudah mendapatkan persetujuan BPOM.</div></section>
     <section class="work-section" id="work-result"><div class="work-section-head"><h3>Hasil pemeriksaan</h3><span>${paid?`${activeCount} ASPEK DITINJAU`:'TERKUNCI'}</span></div>${paid?resultHtml(s.report):`<div class="empty-report"><span class="empty-report-icon">✳</span><h4>Hasilmu belum tersedia.</h4><p>${pending?'Pembayaran masih menunggu verifikasi dari penyedia pembayaran. Begitu terkonfirmasi, checklist akan tersedia di halaman ini.':'Laporan tetap terkunci karena pembayaran belum terverifikasi. Lihat informasi pembayaran di bagian bawah.'}</p>${(checkoutButton||retryButton)?`<div class="report-payment-action">${checkoutButton||retryButton}</div>`:''}</div>`}</section>
-    <section class="work-section" id="work-payment"><div class="work-section-head"><h3>Pembayaran & akses</h3><span>DETAIL TRANSAKSI</span></div><div class="payment-box"><div><small>BIAYA LAYANAN / 1 PRODUK</small><strong>${money(s.amount)}</strong><p>${escapeHtml(paymentLabel[s.paymentStatus]||'Menunggu verifikasi')} · layanan awal independen, bukan tarif resmi BPOM.</p></div><div class="payment-cta">${checkoutButton||retryButton||'<span class="metric-kicker">TIDAK ADA PEMBAYARAN AKTIF</span>'}</div></div><p class="workspace-help">Simpan tautan pribadi pengajuan. Jika kehilangan akses, halaman ini tidak dapat dipulihkan melalui ID saja. Informasi resmi izin edar: <a href="https://registrasipangan.pom.go.id/" target="_blank" rel="noopener noreferrer">Direktorat Registrasi Pangan Olahan ↗</a>.</p></section>
+    <section class="work-section" id="work-payment"><div class="work-section-head"><h3>Pembayaran & akses</h3><span>DETAIL TRANSAKSI</span></div><div class="payment-box"><div><small>BIAYA LAYANAN / 1 PRODUK</small><strong>${money(s.amount)}</strong><p>${escapeHtml(paymentLabel[s.paymentStatus]||'Menunggu verifikasi')} · layanan awal independen, bukan tarif resmi BPOM.</p></div><div class="payment-cta">${checkoutButton||retryButton||'<span class="metric-kicker">TIDAK ADA PEMBAYARAN AKTIF</span>'}</div></div><p class="workspace-help">Simpan tautan pribadi pengajuan. Jika kehilangan akses, gunakan pemulihan email pada halaman Ruang Pengajuan (jika layanan email aktif). Informasi resmi izin edar: <a href="https://registrasipangan.pom.go.id/" target="_blank" rel="noopener noreferrer">Direktorat Registrasi Pangan Olahan ↗</a>.</p></section>
   </div></div>`;
 }
 async function showStatus(id,token){
   const root=$('trackCard'); root.innerHTML='<div class="empty-report"><h4>Memuat ruang pengajuan…</h4><p>Sistem sedang memeriksa akses privat dan status terbaru.</p></div>';
   try{
+    if(customerImageUrl){URL.revokeObjectURL(customerImageUrl);customerImageUrl='';}
     const s=await api(`/api/public/applications/${encodeURIComponent(id)}`,{headers:{Authorization:`Bearer ${token}`}});
     root.innerHTML=workspaceHtml(s);
+    if(s.imageAvailable){
+      try{const r=await fetch(`/api/public/applications/${encodeURIComponent(id)}/image`,{headers:{Authorization:`Bearer ${token}`},cache:'no-store'});
+        if(r.ok){customerImageUrl=URL.createObjectURL(await r.blob());const im=$('customerLabelImage');if(im)im.src=customerImageUrl;}
+      }catch{/* Photo is optional; dashboard remains available. */}
+    }
     $('refreshStatus').addEventListener('click',()=>showStatus(id,token));
     $('copyTracking').addEventListener('click',async()=>{
       const button=$('copyTracking');const url=window.location.href;

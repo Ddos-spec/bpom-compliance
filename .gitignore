@@ -3,5 +3,7 @@
 !.env.example
 node_modules/
 data/*.db*
+data/private_images/
 data/customer_uploads/
 .e2e/
+__pycache__/

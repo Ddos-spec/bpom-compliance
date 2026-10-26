@@ -1,0 +1,42 @@
+services:
+  tera:
+    build: .
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      PORT: "4173"
+      TERA_DATA_DIR: /app/data
+    env_file:
+      - .env
+    volumes:
+      - tera_storage:/app/data
+    networks:
+      - private
+    read_only: true
+    tmpfs:
+      - /tmp:size=32m,mode=1777
+    security_opt:
+      - no-new-privileges:true
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    environment:
+      TERA_DOMAIN: ${TERA_DOMAIN:?Set TERA_DOMAIN in .env}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - tera
+    networks:
+      - private
+volumes:
+  tera_storage:
+  caddy_data:
+  caddy_config:
+networks:
+  private:

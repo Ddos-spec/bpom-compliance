@@ -1,0 +1,8 @@
+Repository: https://github.com/Ddos-spec/bpom-compliance
+Target branch: master
+Observed base commit: 32f52cda9a0c6abcef87e937321c0dff14c26eb9
+Base observation: 2026-10-26 (Asia/Jakarta)
+This archive is an overlay on master. The installed V3 is already in master.
+The repo's main branch is NOT the latest deployment source.
+Do not overwrite .env, do not remove persisted database or private_images.
+No GitHub push, live checkout, actual email send, real VPS Docker deployment or legal review was performed.
