@@ -56,8 +56,20 @@ async function boot(){ $('year').textContent=new Date().getFullYear();$('today')
 }
 $('loginForm').addEventListener('submit',async e=>{e.preventDefault();if(!state.loginEnabled){$('loginFeedback').textContent='Akses email belum dikonfigurasi oleh pengelola.';return;}
  const email=$('loginEmail').value.trim().toLowerCase();const btn=$('loginButton');btn.disabled=true;btn.textContent='Mengirim tautan…';$('loginFeedback').textContent='';$('loginFeedback').classList.remove('error');
- try{const data=await request('/api/account/login/request',{method:'POST',body:{email}});$('loginFeedback').textContent=data.message;}
+ try{const data=await request('/api/account/login/request',{method:'POST',body:{email}});$('loginFeedback').textContent=data.message;if(data.demoToken){const redeem=await request('/api/account/login/redeem',{method:'POST',body:{token:data.demoToken}});await showApp(redeem.email);}}
  catch(err){$('loginFeedback').textContent=err.message;$('loginFeedback').classList.add('error');}finally{btn.disabled=false;btn.innerHTML='Kirim tautan masuk <span>↗</span>';}
+});
+$('btnDemoLogin')?.addEventListener('click',async()=>{
+ const btn=$('btnDemoLogin');btn.disabled=true;btn.textContent='Menyiapkan akun demo…';$('loginFeedback').textContent='';$('loginFeedback').classList.remove('error');
+ try{
+  const data=await request('/api/account/login/request',{method:'POST',body:{email:'demo@tera.id'}});
+  if(data.demoToken){
+   const redeem=await request('/api/account/login/redeem',{method:'POST',body:{token:data.demoToken}});
+   await showApp(redeem.email);
+  } else {
+   $('loginFeedback').textContent=data.message;
+  }
+ }catch(err){$('loginFeedback').textContent=err.message;$('loginFeedback').classList.add('error');}finally{btn.disabled=false;btn.textContent='Masuk sebagai Demo (1-Klik) ↗';}
 });
 $('logoutBtn').addEventListener('click',async()=>{try{await request('/api/account/logout',{method:'POST'});}catch{}state.apps=[];showLogin('Kamu sudah keluar dari akun.');});
 $('refreshBtn').addEventListener('click',async()=>{const btn=$('refreshBtn');btn.disabled=true;btn.textContent='Memuat…';try{await loadData();}catch(e){if(e.status===401)showLogin('Sesi berakhir. Masuk kembali.',true);else alert(e.message);}finally{btn.disabled=false;btn.textContent='↻ Perbarui data';}});

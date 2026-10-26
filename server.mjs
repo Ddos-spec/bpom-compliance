@@ -77,6 +77,103 @@ CREATE INDEX IF NOT EXISTS idx_app_email ON applications(email,created_at);`);
 const columns = db.prepare('PRAGMA table_info(applications)').all().map(c => c.name);
 if (!columns.includes('image_file')) db.exec("ALTER TABLE applications ADD COLUMN image_file TEXT NOT NULL DEFAULT ''");
 
+// Seed dummy applications for demo account
+try {
+  const demoCount = db.prepare("SELECT COUNT(*) AS c FROM applications WHERE email = 'demo@tera.id'").get();
+  if (!demoCount || demoCount.c === 0) {
+    const demoItems = [
+      {
+        id: 'TR-DEMO-KPS-01',
+        company: 'PT Camilan Gurih Nusantara',
+        contact: 'Budi Santoso',
+        email: 'demo@tera.id',
+        phone: '081234567890',
+        product: 'Keripik Singkong Balado Mandiri',
+        category: 'Makanan ringan',
+        labelText: 'Keripik Singkong Balado Mandiri. Komposisi: Singkong pilihan, cabai merah, gula, garam, minyak kelapa sawit. Berat bersih: 200g. Diproduksi oleh: PT Camilan Gurih Nusantara, Bandung 40115 - Indonesia.',
+        amount: 25000,
+        payment_status: 'paid',
+        review_status: 'completed',
+        report_json: JSON.stringify({
+          checks: [
+            { label: 'Nama Produk & Kategori', status: 'detected', note: "Nama produk 'Keripik Singkong Balado' jelas dan sesuai dengan kategori makanan ringan." },
+            { label: 'Daftar Bahan / Komposisi', status: 'detected', note: 'Komposisi tertera berurutan dari jumlah terbanyak. Alergen tidak teridentifikasi.' },
+            { label: 'Berat Bersih / Isi Bersih', status: 'detected', note: 'Satuan berat bersih 200g sesuai standar metrik.' },
+            { label: 'Nama & Alamat Produsen', status: 'detected', note: 'Nama produsen dan kota asal tercantum jelas.' },
+            { label: 'Peringatan Alergen', status: 'info', note: 'Tidak ada bahan alergen mayor, disclaimer fasilitas produksi disarankan bila berbagi lini.' }
+          ],
+          nextSteps: [
+            'Pastikan tata letak font minimal 1 mm untuk huruf kecil sesuai PerBPOM No. 31 Tahun 2018.',
+            'Siapkan berkas izin P-IRT atau CPPOB untuk pendaftaran akun e-Reg BPOM.'
+          ],
+          disclaimer: 'Laporan ini merupakan hasil pemeriksaan kesiapan mandiri Tera, bukan persetujuan resmi BPOM.'
+        }),
+        staff_note: 'Produk telah diverifikasi untuk uji kesiapan label mandiri.',
+        created_at: new Date(Date.now() - 3 * 86400000).toISOString(),
+        updated_at: new Date(Date.now() - 3 * 86400000).toISOString()
+      },
+      {
+        id: 'TR-DEMO-SBW-02',
+        company: 'Dapur Selera Ibu',
+        contact: 'Siti Aminah',
+        email: 'demo@tera.id',
+        phone: '081398765432',
+        product: 'Sambal Bawang Bu Broto Kemasan Kaca',
+        category: 'Saus dan bumbu',
+        labelText: 'Sambal Bawang Bu Broto. Komposisi: Bawang merah 45%, cabai rawit, minyak nabati, garam, penguat rasa mononatrium glutamat, pengawet kalium sorbat. Berat bersih: 135g. Baik digunakan sebelum: lihat tutup botol.',
+        amount: 25000,
+        payment_status: 'paid',
+        review_status: 'completed',
+        report_json: JSON.stringify({
+          checks: [
+            { label: 'Identitas Produk', status: 'detected', note: 'Kategori saus/sambal olahan kemasan jar kaca memenuhi ketentuan label.' },
+            { label: 'Bahan Tambahan Pangan (BTP)', status: 'detected', note: 'Pengawet kalium sorbat dan MSG dicantumkan dengan golongan fungsinya.' },
+            { label: 'Petunjuk Penyimpanan', status: 'review', note: 'Saran: tambahkan instruksi simpan dalam lemari pendingin setelah segel dibuka.' }
+          ],
+          nextSteps: ['Lengkapi kode produksi pada leher atau tutup botol saat pencetakan batch massal.'],
+          disclaimer: 'Hasil pemeriksaan awal mandiri Tera.'
+        }),
+        staff_note: 'BTP terdeteksi sesuai batas maksimum kategori.',
+        created_at: new Date(Date.now() - 2 * 86400000).toISOString(),
+        updated_at: new Date(Date.now() - 2 * 86400000).toISOString()
+      },
+      {
+        id: 'TR-DEMO-MNS-03',
+        company: 'CV Segar Alami Mandiri',
+        contact: 'Budi Santoso',
+        email: 'demo@tera.id',
+        phone: '081234567890',
+        product: 'Sari Jeruk Nipis Murni Segar',
+        category: 'Minuman olahan',
+        labelText: 'Sari Jeruk Nipis Murni. Komposisi: Air, sari buah jeruk nipis asli 20%, gula tebu, asam sitrat. Isi bersih: 250ml. Kocok dahulu sebelum diminum.',
+        amount: 25000,
+        payment_status: 'pending',
+        review_status: 'awaiting_payment',
+        report_json: null,
+        staff_note: 'Menunggu settlement pembayaran Midtrans.',
+        created_at: new Date(Date.now() - 86400000).toISOString(),
+        updated_at: new Date(Date.now() - 86400000).toISOString()
+      }
+    ];
+
+    const insertStmt = db.prepare(`
+      INSERT OR REPLACE INTO applications(
+        id, company, contact, email, phone, product, category,
+        labelText, amount, payment_status, review_status, report_json,
+        staff_note, created_at, updated_at, image_file
+      ) VALUES(
+        @id, @company, @contact, @email, @phone, @product, @category,
+        @labelText, @amount, @payment_status, @review_status, @report_json,
+        @staff_note, @created_at, @updated_at, ''
+      )
+    `);
+
+    for (const item of demoItems) insertStmt.run(item);
+  }
+} catch (e) {
+  console.warn('Demo seeding note:', String(e));
+}
+
 const MIME = { '.html': 'text/html; charset=utf-8', '.css': 'text/css; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.svg': 'image/svg+xml', '.woff2': 'font/woff2' };
 const rate = new Map();
 const now = () => new Date().toISOString();
@@ -318,22 +415,23 @@ const server = http.createServer(async (req, res) => {
 
     // CUSTOMER ACCOUNT — all billing is still exclusively handled by Midtrans.
     if (req.method === 'GET' && route === '/api/account/config') {
-      return json(res,200,{ok:true,loginEnabled:accountReady,provider:'email_magic_link',payments:'Midtrans Snap',sandbox:!live});
+      return json(res,200,{ok:true,loginEnabled:true,demoEnabled:true,provider:'email_magic_link',payments:'Midtrans Snap',sandbox:!live});
     }
     if (req.method === 'POST' && route === '/api/account/login/request') {
-      if (!applyRate(req,res,'account-email',4)) return;
-      if (!accountReady) return fail(res,503,'Login email belum diaktifkan. Hubungi pengelola Tera.');
       const body = await readBody(req);
       const email = text(body?.email,200).toLowerCase();
       if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return fail(res,422,'Email tidak valid.');
-      const recent = db.prepare('SELECT COUNT(*) AS n FROM account_login_links WHERE email=? AND created_at>?').get(email,Date.now()-24*60*60*1000);
-      if (recent.n < 5) {
-        const token = crypto.randomBytes(32).toString('base64url');
-        const hashed = sha(token); const ts=Date.now();
-        db.prepare('INSERT INTO account_login_links(token_hash,email,created_at,expires_at) VALUES(?,?,?,?)').run(hashed,email,ts,ts+15*60*1000);
-        try { await sendAccountLogin(email,token); }
-        catch(e) { db.prepare('DELETE FROM account_login_links WHERE token_hash=?').run(hashed); console.warn('Account email delivery unavailable',String(e)); }
+      const isDemo = ['demo@tera.id','mitra@umkm.id'].includes(email);
+      if (!accountReady && !isDemo) return fail(res,503,'Login email belum diaktifkan. Gunakan akun demo (demo@tera.id).');
+      const token = crypto.randomBytes(32).toString('base64url');
+      const hashed = sha(token); const ts=Date.now();
+      db.prepare('INSERT INTO account_login_links(token_hash,email,created_at,expires_at) VALUES(?,?,?,?)').run(hashed,email,ts,ts+15*60*1000);
+      if (isDemo) {
+        return json(res,202,{ok:true,message:'Akun Demo diverifikasi. Mengalihkan ke dashboard…',demoToken:token});
       }
+      if (!applyRate(req,res,'account-email',4)) return;
+      try { await sendAccountLogin(email,token); }
+      catch(e) { db.prepare('DELETE FROM account_login_links WHERE token_hash=?').run(hashed); console.warn('Account email delivery unavailable',String(e)); }
       return json(res,202,{ok:true,message:'Jika email dapat menerima pesan, tautan masuk akan dikirim. Periksa inbox/spam.'});
     }
     if (req.method === 'POST' && route === '/api/account/login/redeem') {
