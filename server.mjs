@@ -33,17 +33,19 @@ const adminKey = process.env.TERA_ADMIN_KEY || '';
 const resendKey = process.env.RESEND_API_KEY || '';
 const emailFrom = process.env.TERA_EMAIL_FROM || '';
 const publicUrl = (process.env.TERA_PUBLIC_URL || '').replace(/\/$/, '');
-const recoveryReady = Boolean(resendKey && emailFrom && /^https:\/\//i.test(publicUrl));
+const ephemeralRuntime = Boolean(process.env.VERCEL && process.env.NODE_ENV !== 'test');
+const recoveryReady = !ephemeralRuntime && Boolean(resendKey && emailFrom && /^https:\/\//i.test(publicUrl));
 const resendEndpoint = (process.env.NODE_ENV === 'test' && process.env.TERA_TEST_RESEND_URL) ? process.env.TERA_TEST_RESEND_URL : 'https://api.resend.com/emails';
 const defaultDataDir = process.env.VERCEL ? '/tmp/data' : path.join(root, 'data');
 const dataDir = process.env.TERA_DATA_DIR ? path.resolve(process.env.TERA_DATA_DIR) : defaultDataDir;
-// Vercel serverless demo mode notice
-if (process.env.VERCEL && process.env.NODE_ENV !== 'test') { console.warn('Tera running in Vercel preview mode with /tmp ephemeral storage.'); }
+// Vercel /tmp is ephemeral; the brochure/demo may load, but paid/auth endpoints fail closed.
+// Infrastructure migration is delegated to the deployment owner (see AI_DEVOPS_HANDOFF.md).
+if (ephemeralRuntime) console.warn('Vercel ephemeral: payment, login, and data intake disabled until persistent backend is deployed.');
 const uploadDir = path.join(dataDir, 'private_images');
 fs.mkdirSync(uploadDir, { recursive: true, mode: 0o700 });
 fs.mkdirSync(dataDir, { recursive: true, mode: 0o700 });
 const statusCooldown = new Map();
-const paymentReady = Boolean(serverKey && Number.isSafeInteger(fee) && fee >= 1000);
+const paymentReady = !ephemeralRuntime && Boolean(serverKey && Number.isSafeInteger(fee) && fee >= 1000);
 const pub = path.join(root, 'public');
 const db = new DatabaseSync(path.join(dataDir, 'tera_public.db'));
 db.exec(`PRAGMA journal_mode=WAL;
@@ -73,106 +75,24 @@ CREATE TABLE IF NOT EXISTS account_sessions (
  expires_at INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_account_session_email ON account_sessions(email);
-CREATE INDEX IF NOT EXISTS idx_app_email ON applications(email,created_at);`);
+CREATE INDEX IF NOT EXISTS idx_app_email ON applications(email,created_at);
+-- Revisions are stored as separate proposed texts; the active paid report remains unchanged
+-- until a staff member explicitly accepts a revision.
+CREATE TABLE IF NOT EXISTS application_revisions (
+ id INTEGER PRIMARY KEY AUTOINCREMENT,
+ application_id TEXT NOT NULL,
+ proposed_text TEXT NOT NULL,
+ note TEXT NOT NULL DEFAULT '',
+ status TEXT NOT NULL DEFAULT 'submitted' CHECK(status IN ('submitted','accepted','rejected')),
+ staff_note TEXT NOT NULL DEFAULT '',
+ created_at TEXT NOT NULL,
+ decided_at TEXT,
+ FOREIGN KEY(application_id) REFERENCES applications(id)
+);
+CREATE INDEX IF NOT EXISTS idx_tera_revisions_app ON application_revisions(application_id, id);
+`);
 const columns = db.prepare('PRAGMA table_info(applications)').all().map(c => c.name);
 if (!columns.includes('image_file')) db.exec("ALTER TABLE applications ADD COLUMN image_file TEXT NOT NULL DEFAULT ''");
-
-// Seed dummy applications for demo account
-try {
-  const demoCount = db.prepare("SELECT COUNT(*) AS c FROM applications WHERE email = 'demo@tera.id'").get();
-  if (!demoCount || demoCount.c === 0) {
-    const demoItems = [
-      {
-        id: 'TR-DEMO-KPS-01',
-        company: 'PT Camilan Gurih Nusantara',
-        contact: 'Budi Santoso',
-        email: 'demo@tera.id',
-        phone: '081234567890',
-        product: 'Keripik Singkong Balado Mandiri',
-        category: 'Makanan ringan',
-        labelText: 'Keripik Singkong Balado Mandiri. Komposisi: Singkong pilihan, cabai merah, gula, garam, minyak kelapa sawit. Berat bersih: 200g. Diproduksi oleh: PT Camilan Gurih Nusantara, Bandung 40115 - Indonesia.',
-        amount: 25000,
-        payment_status: 'paid',
-        review_status: 'completed',
-        report_json: JSON.stringify({
-          checks: [
-            { label: 'Nama Produk & Kategori', status: 'detected', note: "Nama produk 'Keripik Singkong Balado' jelas dan sesuai dengan kategori makanan ringan." },
-            { label: 'Daftar Bahan / Komposisi', status: 'detected', note: 'Komposisi tertera berurutan dari jumlah terbanyak. Alergen tidak teridentifikasi.' },
-            { label: 'Berat Bersih / Isi Bersih', status: 'detected', note: 'Satuan berat bersih 200g sesuai standar metrik.' },
-            { label: 'Nama & Alamat Produsen', status: 'detected', note: 'Nama produsen dan kota asal tercantum jelas.' },
-            { label: 'Peringatan Alergen', status: 'info', note: 'Tidak ada bahan alergen mayor, disclaimer fasilitas produksi disarankan bila berbagi lini.' }
-          ],
-          nextSteps: [
-            'Pastikan tata letak font minimal 1 mm untuk huruf kecil sesuai PerBPOM No. 31 Tahun 2018.',
-            'Siapkan berkas izin P-IRT atau CPPOB untuk pendaftaran akun e-Reg BPOM.'
-          ],
-          disclaimer: 'Laporan ini merupakan hasil pemeriksaan kesiapan mandiri Tera, bukan persetujuan resmi BPOM.'
-        }),
-        staff_note: 'Produk telah diverifikasi untuk uji kesiapan label mandiri.',
-        created_at: new Date(Date.now() - 3 * 86400000).toISOString(),
-        updated_at: new Date(Date.now() - 3 * 86400000).toISOString()
-      },
-      {
-        id: 'TR-DEMO-SBW-02',
-        company: 'Dapur Selera Ibu',
-        contact: 'Siti Aminah',
-        email: 'demo@tera.id',
-        phone: '081398765432',
-        product: 'Sambal Bawang Bu Broto Kemasan Kaca',
-        category: 'Saus dan bumbu',
-        labelText: 'Sambal Bawang Bu Broto. Komposisi: Bawang merah 45%, cabai rawit, minyak nabati, garam, penguat rasa mononatrium glutamat, pengawet kalium sorbat. Berat bersih: 135g. Baik digunakan sebelum: lihat tutup botol.',
-        amount: 25000,
-        payment_status: 'paid',
-        review_status: 'completed',
-        report_json: JSON.stringify({
-          checks: [
-            { label: 'Identitas Produk', status: 'detected', note: 'Kategori saus/sambal olahan kemasan jar kaca memenuhi ketentuan label.' },
-            { label: 'Bahan Tambahan Pangan (BTP)', status: 'detected', note: 'Pengawet kalium sorbat dan MSG dicantumkan dengan golongan fungsinya.' },
-            { label: 'Petunjuk Penyimpanan', status: 'review', note: 'Saran: tambahkan instruksi simpan dalam lemari pendingin setelah segel dibuka.' }
-          ],
-          nextSteps: ['Lengkapi kode produksi pada leher atau tutup botol saat pencetakan batch massal.'],
-          disclaimer: 'Hasil pemeriksaan awal mandiri Tera.'
-        }),
-        staff_note: 'BTP terdeteksi sesuai batas maksimum kategori.',
-        created_at: new Date(Date.now() - 2 * 86400000).toISOString(),
-        updated_at: new Date(Date.now() - 2 * 86400000).toISOString()
-      },
-      {
-        id: 'TR-DEMO-MNS-03',
-        company: 'CV Segar Alami Mandiri',
-        contact: 'Budi Santoso',
-        email: 'demo@tera.id',
-        phone: '081234567890',
-        product: 'Sari Jeruk Nipis Murni Segar',
-        category: 'Minuman olahan',
-        labelText: 'Sari Jeruk Nipis Murni. Komposisi: Air, sari buah jeruk nipis asli 20%, gula tebu, asam sitrat. Isi bersih: 250ml. Kocok dahulu sebelum diminum.',
-        amount: 25000,
-        payment_status: 'pending',
-        review_status: 'awaiting_payment',
-        report_json: null,
-        staff_note: 'Menunggu settlement pembayaran Midtrans.',
-        created_at: new Date(Date.now() - 86400000).toISOString(),
-        updated_at: new Date(Date.now() - 86400000).toISOString()
-      }
-    ];
-
-    const insertStmt = db.prepare(`
-      INSERT OR REPLACE INTO applications(
-        id, company, contact, email, phone, product, category,
-        labelText, amount, payment_status, review_status, report_json,
-        staff_note, created_at, updated_at, image_file
-      ) VALUES(
-        @id, @company, @contact, @email, @phone, @product, @category,
-        @labelText, @amount, @payment_status, @review_status, @report_json,
-        @staff_note, @created_at, @updated_at, ''
-      )
-    `);
-
-    for (const item of demoItems) insertStmt.run(item);
-  }
-} catch (e) {
-  console.warn('Demo seeding note:', String(e));
-}
 
 const MIME = { '.html': 'text/html; charset=utf-8', '.css': 'text/css; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.svg': 'image/svg+xml', '.woff2': 'font/woff2' };
 const rate = new Map();
@@ -284,6 +204,24 @@ function accountList(email) {
   return db.prepare(`SELECT id,company,product,category,amount,payment_status AS paymentStatus,
     review_status AS reviewStatus, created_at AS createdAt,updated_at AS updatedAt
     FROM applications WHERE email=? ORDER BY created_at DESC LIMIT 150`).all(email);
+}
+function revisionList(applicationId, staff = false) {
+  const rows = db.prepare(`SELECT id, proposed_text AS proposedText, note, status,
+     staff_note AS staffNote, created_at AS createdAt, decided_at AS decidedAt
+     FROM application_revisions WHERE application_id=? ORDER BY id DESC LIMIT 30`).all(applicationId);
+  return staff ? rows : rows.map(({proposedText, ...rest}) => ({...rest, proposedText}));
+}
+function receiptFor(row) {
+  // Receipt is descriptive evidence of a validated Midtrans payment; it is NOT a tax invoice.
+  return {
+    ok:true, documentType:'Bukti transaksi layanan Tera', reference:row.id,
+    customer:row.company, product:row.product,
+    amount:row.amount, currency:'IDR', provider:'Midtrans',
+    paymentStatus:row.payment_status, createdAt:row.created_at,
+    lastUpdatedAt:row.updated_at,
+    scope:'Pemeriksaan awal informasi label pangan olahan independen',
+    disclaimer:'Bukan faktur pajak, bukti PNBP, tanda terima BPOM, atau jaminan izin edar.'
+  };
 }
 function customerView(row) {
   const paid = row.payment_status === 'paid';
@@ -415,23 +353,22 @@ const server = http.createServer(async (req, res) => {
 
     // CUSTOMER ACCOUNT — all billing is still exclusively handled by Midtrans.
     if (req.method === 'GET' && route === '/api/account/config') {
-      return json(res,200,{ok:true,loginEnabled:true,demoEnabled:true,provider:'email_magic_link',payments:'Midtrans Snap',sandbox:!live});
+      return json(res,200,{ok:true,loginEnabled:accountReady,provider:'email_magic_link',payments:'Midtrans Snap',sandbox:!live});
     }
     if (req.method === 'POST' && route === '/api/account/login/request') {
+      if (!applyRate(req,res,'account-email',4)) return;
+      if (!accountReady) return fail(res,503,'Login email belum diaktifkan. Hubungi pengelola Tera.');
       const body = await readBody(req);
       const email = text(body?.email,200).toLowerCase();
       if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return fail(res,422,'Email tidak valid.');
-      const isDemo = ['demo@tera.id','mitra@umkm.id'].includes(email);
-      if (!accountReady && !isDemo) return fail(res,503,'Login email belum diaktifkan. Gunakan akun demo (demo@tera.id).');
-      const token = crypto.randomBytes(32).toString('base64url');
-      const hashed = sha(token); const ts=Date.now();
-      db.prepare('INSERT INTO account_login_links(token_hash,email,created_at,expires_at) VALUES(?,?,?,?)').run(hashed,email,ts,ts+15*60*1000);
-      if (isDemo) {
-        return json(res,202,{ok:true,message:'Akun Demo diverifikasi. Mengalihkan ke dashboard…',demoToken:token});
+      const recent = db.prepare('SELECT COUNT(*) AS n FROM account_login_links WHERE email=? AND created_at>?').get(email,Date.now()-24*60*60*1000);
+      if (recent.n < 5) {
+        const token = crypto.randomBytes(32).toString('base64url');
+        const hashed = sha(token); const ts=Date.now();
+        db.prepare('INSERT INTO account_login_links(token_hash,email,created_at,expires_at) VALUES(?,?,?,?)').run(hashed,email,ts,ts+15*60*1000);
+        try { await sendAccountLogin(email,token); }
+        catch(e) { db.prepare('DELETE FROM account_login_links WHERE token_hash=?').run(hashed); console.warn('Account email delivery unavailable',String(e)); }
       }
-      if (!applyRate(req,res,'account-email',4)) return;
-      try { await sendAccountLogin(email,token); }
-      catch(e) { db.prepare('DELETE FROM account_login_links WHERE token_hash=?').run(hashed); console.warn('Account email delivery unavailable',String(e)); }
       return json(res,202,{ok:true,message:'Jika email dapat menerima pesan, tautan masuk akan dikirim. Periksa inbox/spam.'});
     }
     if (req.method === 'POST' && route === '/api/account/login/redeem') {
@@ -459,6 +396,34 @@ const server = http.createServer(async (req, res) => {
         if (!applyRate(req,res,'account-list',45)) return;
         return json(res,200,{ok:true,data:accountList(email)});
       }
+      const newRevision=route.match(/^\/api\/account\/applications\/(TR-[A-Z0-9-]+)\/revisions$/);
+      if (newRevision && req.method === 'POST') {
+        if (!applyRate(req,res,'submit-revision',12)) return;
+        const row=db.prepare('SELECT * FROM applications WHERE id=? AND email=?').get(newRevision[1],email);
+        if (!row) return fail(res,404,'Pengajuan tidak ditemukan.');
+        if (row.payment_status!=='paid' || row.review_status!=='revision_requested') return fail(res,409,'Revisi hanya bisa dikirim setelah diminta staf dan pembayaran terverifikasi.');
+        const pending=db.prepare("SELECT id FROM application_revisions WHERE application_id=? AND status='submitted' LIMIT 1").get(row.id);
+        if (pending) return fail(res,409,'Revisi sebelumnya masih menunggu tinjauan.');
+        const b=await readBody(req);
+        const proposed=text(b?.labelText,16000);
+        const note=text(b?.note,800);
+        if (proposed.length<30 || proposed===row.label_text) return fail(res,422,'Masukkan perubahan teks label yang berbeda, minimal 30 karakter.');
+        const created=now();
+        db.exec('BEGIN IMMEDIATE');
+        try {
+          db.prepare('INSERT INTO application_revisions(application_id,proposed_text,note,created_at) VALUES(?,?,?,?)').run(row.id,proposed,note,created);
+          db.prepare("UPDATE applications SET review_status='in_review', updated_at=? WHERE id=?").run(created,row.id);
+          db.exec('COMMIT');
+        } catch(e) {db.exec('ROLLBACK');throw e;}
+        return json(res,201,{ok:true,message:'Revisi diterima dan menunggu evaluasi staf. Tidak ada pembayaran tambahan otomatis.'});
+      }
+      const receipt=route.match(/^\/api\/account\/applications\/(TR-[A-Z0-9-]+)\/receipt$/);
+      if (receipt && req.method === 'GET') {
+        const row=db.prepare('SELECT * FROM applications WHERE id=? AND email=?').get(receipt[1],email);
+        if (!row) return fail(res,404,'Pengajuan tidak ditemukan.');
+        if (!['paid','refunded'].includes(row.payment_status)) return fail(res,409,'Belum ada pembayaran berhasil yang bisa diterbitkan sebagai bukti transaksi.');
+        return json(res,200,receiptFor(row));
+      }
       const image=route.match(/^\/api\/account\/applications\/(TR-[A-Z0-9-]+)\/image$/);
       if (req.method==='GET' && image) {
         const row=db.prepare('SELECT * FROM applications WHERE id=? AND email=?').get(image[1],email);
@@ -470,7 +435,7 @@ const server = http.createServer(async (req, res) => {
         const row=db.prepare('SELECT * FROM applications WHERE id=? AND email=?').get(detail[1],email);
         if (!row) return fail(res,404,'Pengajuan tidak ditemukan.');
         const refreshed=await reconcilePayment(row);
-        return json(res,200,{...customerView(refreshed),category:refreshed.category,labelText:refreshed.label_text,nie:refreshed.nie,contact:refreshed.contact,updatedAt:refreshed.updated_at});
+        return json(res,200,{...customerView(refreshed),category:refreshed.category,labelText:refreshed.label_text,nie:refreshed.nie,contact:refreshed.contact,updatedAt:refreshed.updated_at,revisions:revisionList(refreshed.id)});
       }
       return fail(res,404,'Endpoint akun tidak ditemukan.');
     }
@@ -626,12 +591,43 @@ const server = http.createServer(async (req, res) => {
         const row = db.prepare('SELECT * FROM applications WHERE id=?').get(staffImage[1]);
         return row ? servePrivateImage(res,row) : fail(res,404,'Tidak ditemukan.');
       }
+      const decide=route.match(/^\/api\/staff\/applications\/(TR-[A-Z0-9-]+)\/revisions\/(\d+)$/);
+      if (decide && req.method === 'PATCH') {
+        const b=await readBody(req);
+        if (!['accept','reject'].includes(b?.decision)) return fail(res,422,'Keputusan harus accept atau reject.');
+        const note=text(b?.note,800);
+        if (b.decision==='reject' && note.length<4) return fail(res,422,'Alasan penolakan revisi wajib diisi.');
+        const row=db.prepare('SELECT * FROM applications WHERE id=?').get(decide[1]);
+        if (!row) return fail(res,404,'Pengajuan tidak ditemukan.');
+        if (row.payment_status!=='paid') return fail(res,409,'Hanya transaksi lunas yang dapat diproses.');
+        const rev=db.prepare('SELECT * FROM application_revisions WHERE id=? AND application_id=?').get(Number(decide[2]),row.id);
+        if (!rev) return fail(res,404,'Revisi tidak ditemukan.');
+        if (rev.status!=='submitted') return fail(res,409,'Revisi sudah diproses.');
+        const nowTime=now();
+        db.exec('BEGIN IMMEDIATE');
+        try {
+          const changed=db.prepare("UPDATE application_revisions SET status=?, staff_note=?, decided_at=? WHERE id=? AND status='submitted'")
+            .run(b.decision==='accept'?'accepted':'rejected',note,nowTime,rev.id);
+          if(changed.changes!==1) throw Error('Status revisi berubah bersamaan, refresh.');
+          if(b.decision==='accept') {
+            const report=reportFor({...row,label_text:rev.proposed_text});
+            db.prepare("UPDATE applications SET label_text=?, report_json=?, review_status='report_ready', staff_note=?, updated_at=? WHERE id=?")
+              .run(rev.proposed_text,JSON.stringify(report),note,nowTime,row.id);
+          } else {
+            db.prepare("UPDATE applications SET review_status='revision_requested',staff_note=?,updated_at=? WHERE id=?")
+              .run(note,nowTime,row.id);
+          }
+          db.exec('COMMIT');
+        } catch(e) {db.exec('ROLLBACK');throw e;}
+        return json(res,200,{ok:true,message:b.decision==='accept'?'Revisi diterima, checklist diperbarui (otomatis dan belum merupakan keputusan BPOM).':'Revisi dikembalikan kepada pelanggan dengan catatan.'});
+      }
       const m = route.match(/^\/api\/staff\/applications\/(TR-[A-Z0-9-]+)$/);
       if (m && req.method === 'GET') {
         const r = db.prepare('SELECT * FROM applications WHERE id=?').get(m[1]);
         if (!r) return fail(res, 404, 'Tidak ditemukan.');
         const { token_hash, snap_url, image_file, ...rest } = r;
         rest.imageAvailable = Boolean(image_file);
+        rest.revisions=revisionList(r.id,true);
         return json(res, 200, { ok: true, data: rest });
       }
       if (m && req.method === 'PATCH') {
@@ -655,7 +651,7 @@ const server = http.createServer(async (req, res) => {
     if (pathname === '/') pathname = '/index.html';
     // Restrict public assets: old role-based dashboard JS and its demo users
     // still exist in repository but must NOT be exposed by the public server.
-    const publicAssets = new Set(['/index.html', '/public.css', '/public.js', '/favicon.svg', '/staff.html', '/staff.css', '/staff.js', '/account.html', '/account.css', '/account.js']);
+    const publicAssets = new Set(['/index.html', '/public.css', '/public.js', '/favicon.svg', '/staff.html', '/staff.css', '/staff.js', '/account.html', '/account.css', '/account.js', '/demo.html']);
     if (!publicAssets.has(pathname)) return fail(res, 404, 'Tidak ditemukan.');
     const resolved = path.resolve(pub, '.' + pathname);
     if (!resolved.startsWith(pub + path.sep)) return fail(res, 403, 'Dilarang.');

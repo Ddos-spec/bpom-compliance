@@ -17,9 +17,34 @@ function render(){const f=$('filter').value,q=$('search').value.toLowerCase().tr
     const payment=document.createElement('td');payment.append(x('span',statusLabel[r.payment_status]||r.payment_status,`status ${r.payment_status}`),x('small',formatDate(r.created_at)));
     const review=x('td',r.review_status.replaceAll('_',' '));const action=document.createElement('td');const btn=x('button','Buka ↗');btn.type='button';btn.addEventListener('click',()=>detail(r.id));action.append(btn);tr.append(product,company,payment,review,action);tbody.append(tr);}
 }
+
+function renderRevisions(revisions, id){
+  const area=$('staffRevisions');area.replaceChildren();
+  if(!revisions.length){area.append(x('p','Belum ada revisi pelanggan.'));return;}
+  for(const rev of revisions){
+    const card=x('article','','v6-staff-revision');
+    card.append(x('strong',`Revisi #${rev.id} / ${rev.status}`),x('small',formatDate(rev.createdAt)),x('p',rev.note||'Tanpa pesan tambahan.'));
+    const contents=x('pre',rev.proposedText,'v6-revision-text');card.append(contents);
+    if(rev.staffNote)card.append(x('p',`Keputusan: ${rev.staffNote}`));
+    if(rev.status==='submitted'){
+      const input=x('textarea','','v6-revision-note');input.placeholder='Catatan keputusan (wajib untuk penolakan)';input.maxLength=800;input.rows=3;
+      card.append(input);
+      for(const choice of [{v:'accept',label:'Terima revisi'},{v:'reject',label:'Kembalikan dengan catatan'}]){
+        const b=x('button',choice.label,'ghost');b.type='button';b.addEventListener('click',async()=>{
+          b.disabled=true;
+          try{const data=await request(`/api/staff/applications/${encodeURIComponent(id)}/revisions/${rev.id}`,{method:'PATCH',body:JSON.stringify({decision:choice.v,note:input.value})});$('updateMessage').textContent=data.message;await refresh();await detail(id);}
+          catch(e){$('updateMessage').textContent=e.message;b.disabled=false;}
+        });card.append(b);
+      }
+    }
+    area.append(card);
+  }
+}
+
 async function detail(id){selectedId=id;$('detail').hidden=false;$('detail').scrollIntoView({block:'start',behavior:'smooth'});$('detailTitle').textContent='Memuat...';$('imageStatus').textContent='Memeriksa lampiran...';$('staffImage').hidden=true;
  try{const {data:r}=await request(`/api/staff/applications/${encodeURIComponent(id)}`);$('detailTitle').textContent=r.product;$('detailId').textContent=r.id;const dl=$('detailInfo');dl.replaceChildren();
   for(const [label,value] of [['Nama usaha',r.company],['Penanggung jawab',r.contact],['Email',r.email],['Nomor WA',r.phone],['Kategori',r.category],['Status pembayaran',r.payment_status],['Nomor izin edar (klaim)',r.nie||'Belum ada'],['Biaya',`Rp ${Number(r.amount).toLocaleString('id-ID')}`]])dl.append(x('dt',label),x('dd',value));
+  renderRevisions(r.revisions||[],r.id);
   $('detailLabel').textContent=r.label_text;$('reviewStatus').value=r.review_status==='awaiting_payment'?'report_ready':r.review_status;$('staffNote').value=r.staff_note||'';$('updateForm').querySelector('button').disabled=r.payment_status!=='paid';$('updateMessage').textContent=r.payment_status!=='paid'?'Tindakan ditahan sampai pembayaran diverifikasi.':'';
   if(staffImageUrl){URL.revokeObjectURL(staffImageUrl);staffImageUrl='';}
   if(r.imageAvailable){const response=await fetch(`/api/staff/applications/${encodeURIComponent(id)}/image`,{headers:{Authorization:`Bearer ${adminKey}`},cache:'no-store'});if(response.ok){staffImageUrl=URL.createObjectURL(await response.blob());$('staffImage').src=staffImageUrl;$('staffImage').hidden=false;$('imageStatus').textContent='Lampiran privat (hanya staf Tera).';}else $('imageStatus').textContent='Lampiran tidak dapat dimuat.';}

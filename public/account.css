@@ -26,3 +26,6 @@
 
 /* CSP-safe utility classes; no inline styles required */
 .mt-12{margin-top:12px}.mt-18{margin-top:18px}.mt-19{margin-top:19px}.report-subtitle{font-size:16px;margin:27px 0 10px}.small-copy{font-size:13px;color:#718073}
+
+/* V6 / revisions + receipt actions */
+.v6-revision-box{margin-top:24px;padding:24px;background:#edf2e8;border:1px solid #ccd9ca}.v6-revision-box h3,.v6-history h3{font-size:19px;margin:0 0 9px}.v6-revision-box p{font-size:12px;color:#56735e;margin-bottom:14px}.v6-revision-box label{display:block;margin:15px 0 6px;font-weight:700;font-size:12px}.v6-revision-box textarea{width:100%;padding:12px;border:1px solid #b0c0b1;background:#fff;min-height:65px;resize:vertical}.v6-revision-box button{margin-top:16px}.v6-history{margin-top:20px}.v6-history-item{border-top:1px solid #cad7ca;padding:12px 0;font-size:12px}.v6-history-item strong{display:block}.v6-history-item small{color:#657c68}.v6-history-item p{margin-top:8px;white-space:pre-wrap;overflow-wrap:anywhere}
